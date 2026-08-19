@@ -9,6 +9,7 @@ import { loadCompany } from "./lib/company.mjs";
 import { selfScore } from "./lib/selfscore.mjs";
 import { loadRecords } from "./lib/records.mjs";
 import { judgeEligibility } from "./lib/require.mjs";
+import { loadProposals } from "./lib/proposals.mjs";
 
 const TEMPLATE = new URL("../../g2b.html", import.meta.url);
 const DATA = new URL("../../data/g2b/posts.json", import.meta.url);
@@ -95,6 +96,13 @@ async function main() {
       ? `[회사정보] ${payload.company.filled}개 항목 반영 — 예측점수를 계산합니다`
       : `[회사정보] config/회사정보.md 가 비어 있습니다 — 예측점수는 공고 정보만으로 잠정 계산합니다`
   );
+  // 사람이 쓴(또는 다른 도구가 만든) 제안 분석 문서. 제안서 분석 화면에 실립니다.
+  payload.proposals = await loadProposals();
+  if (payload.proposals.length) {
+    const n = payload.proposals.reduce((a, d) => a + d.findings.length, 0);
+    console.log(`[제안분석] 문서 ${payload.proposals.length}건 · 대조 지적 ${n}건`);
+  }
+
   const data = JSON.stringify(payload);
 
   const s = html.indexOf(START);

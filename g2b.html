@@ -378,6 +378,13 @@ svg{display:block; width:100%}
   background:var(--surface-3); color:var(--ink-3); cursor:default;
 }
 .sc .v{font-size:14.5px; font-variant-numeric:tabular-nums}
+/* 배지가 버튼이 되면 브라우저 기본 테두리·글꼴이 붙습니다. 눌러서 갈 수 있다는
+   것은 밑줄이 아니라 커서와 살짝 뜨는 것으로 알립니다 — 배지가 12개씩 깔리는
+   화면이라 밑줄을 그으면 목록이 시끄러워집니다. */
+.sc.goprop{border:0; font:inherit; font-size:13px; font-weight:800; cursor:pointer;
+  transition:transform .1s, box-shadow .1s}
+.sc.goprop:hover{transform:translateY(-1px); box-shadow:0 2px 6px rgba(15,23,42,.16)}
+.sc.goprop:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
 .sc.s3{background:var(--accent); color:#fff}
 .sc.s2{background:var(--accent-tint); color:var(--accent-deep)}
 .sc.s1{background:var(--surface-3); color:var(--ink-2)}
@@ -411,6 +418,101 @@ svg{display:block; width:100%}
   padding:5px 9px; border-radius:6px; white-space:nowrap; transform:translate(-50%,-130%);
 }
 .tip.show{opacity:1}
+
+/* ── 제안서 분석 ─────────────────────────────────────────
+   점수가 어떻게 나왔는지를 끝까지 펼쳐 보는 화면입니다.
+   카드의 점수 배지를 누르면 그 공고로 바로 옵니다. */
+.propgrid{display:grid; grid-template-columns:300px minmax(0,1fr); gap:12px; align-items:start}
+.proppick{
+  background:var(--surface); border:1px solid var(--line); border-radius:12px;
+  box-shadow:var(--shadow); overflow:hidden; max-height:76vh; overflow-y:auto;
+}
+.proppick .ph{
+  position:sticky; top:0; background:var(--surface-2); border-bottom:1px solid var(--line);
+  padding:9px 12px; font-size:12.5px; font-weight:800; color:var(--ink-3); letter-spacing:.03em;
+}
+.propitem{
+  display:block; width:100%; text-align:left; background:none; border:0;
+  border-bottom:1px solid var(--line-soft); padding:9px 12px; cursor:pointer;
+}
+.propitem:hover{background:var(--accent-tint)}
+.propitem.on{background:var(--accent-tint); box-shadow:inset 3px 0 0 var(--accent)}
+.propitem .t{font-size:14px; font-weight:650; letter-spacing:-.01em; line-height:1.4;
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden}
+.propitem .m{display:flex; align-items:center; gap:6px; margin-top:5px; font-size:12.5px; color:var(--ink-3)}
+.propitem .m .sc{font-size:12px; padding:1.5px 6px}
+
+.propbody{display:flex; flex-direction:column; gap:12px; min-width:0}
+.phead{background:var(--surface); border:1px solid var(--line); border-radius:12px;
+  box-shadow:var(--shadow); padding:15px 17px}
+.phead h2{font-size:17px; font-weight:750; line-height:1.45; letter-spacing:-.01em}
+.phead .sub{margin-top:7px; font-size:14px; color:var(--ink-2); display:flex; gap:7px; flex-wrap:wrap}
+.phead .sub .dot{color:var(--ink-4)}
+
+/* 점수 한 줄 요약 — 분모가 무엇인지 반드시 같이 적습니다.
+   "89점" 만 보면 총점으로 오해합니다. 실제로는 정량 항목 득점률입니다. */
+.pscore{display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin-top:13px;
+  padding-top:13px; border-top:1px solid var(--line-soft)}
+.pscore .big{font-size:38px; font-weight:800; letter-spacing:-.03em; line-height:1}
+.pscore .big small{font-size:17px; font-weight:700; color:var(--ink-3); margin-left:2px}
+.pscore .fx{font-size:14px; color:var(--ink-2); line-height:1.65}
+.pscore .fx b{font-weight:800; color:var(--ink)}
+.pscore.selfsc .big{color:var(--accent)}
+.pscore.est .big{color:var(--ink-2)}
+.pscore.no .big{color:var(--stop); font-size:26px}
+
+.ptab{width:100%; border-collapse:collapse; font-size:14.5px}
+.ptab th{
+  text-align:left; font-size:12.5px; font-weight:800; color:var(--ink-3); letter-spacing:.03em;
+  padding:7px 10px; border-bottom:1px solid var(--line); background:var(--surface-2); white-space:nowrap;
+}
+.ptab td{padding:8px 10px; border-bottom:1px solid var(--line-soft); vertical-align:top}
+.ptab tr.off td{color:var(--ink-3)}
+.ptab .nm{font-weight:650; letter-spacing:-.01em}
+.ptab .pt{white-space:nowrap; font-variant-numeric:tabular-nums; font-weight:700}
+.ptab .why{color:var(--ink-2); font-size:13.5px; line-height:1.55}
+.ptab .kd{font-size:11.5px; font-weight:800; padding:1.5px 6px; border-radius:4px; white-space:nowrap;
+  background:var(--surface-3); color:var(--ink-3)}
+.ptab .kd.on{background:var(--accent-tint); color:var(--accent-deep)}
+.ptab .track{height:6px; background:var(--surface-3); border-radius:3px; overflow:hidden; margin-top:6px; max-width:150px}
+.ptab .fill{height:100%; border-radius:3px; background:var(--accent)}
+.ptab .fill.part{background:var(--warn)}
+.ptab .fill.zero{background:var(--stop)}
+
+.pnote{font-size:13.5px; color:var(--ink-3); line-height:1.7; margin-top:10px}
+.pnote b{color:var(--ink-2); font-weight:700}
+
+/* 공고문 원문 표 — 우리가 무엇을 보고 판단했는지 그대로 보여줍니다. */
+.rawtab{width:100%; border-collapse:collapse; font-size:13px; margin-top:4px}
+.rawtab td{border:1px solid var(--line); padding:5px 8px; color:var(--ink-2); vertical-align:top}
+.rawtab tr:first-child td{background:var(--surface-2); font-weight:800; color:var(--ink-3)}
+.rawscroll{overflow-x:auto; max-height:340px; overflow-y:auto}
+
+/* 외부 분석 검토 */
+.audit{display:flex; flex-direction:column; gap:9px; margin-top:4px}
+.arow{border:1px solid var(--line); border-radius:9px; padding:11px 13px; background:var(--surface-2)}
+.arow.f0{border-color:var(--stop-line); background:var(--stop-bg)}
+.arow.f1{border-color:var(--warn-line); background:var(--warn-bg)}
+.arow .ah{display:flex; align-items:baseline; gap:8px; flex-wrap:wrap}
+.arow .lv{font-size:11.5px; font-weight:800; padding:2px 7px; border-radius:999px; white-space:nowrap;
+  background:var(--surface-3); color:var(--ink-3)}
+.arow.f0 .lv{background:var(--stop); color:#fff}
+.arow.f1 .lv{background:var(--warn); color:#fff}
+.arow .q{font-size:14px; font-weight:700; letter-spacing:-.01em}
+.arow .ev{margin-top:6px; font-size:13.5px; color:var(--ink-2); line-height:1.65}
+.arow .fix{margin-top:6px; font-size:13.5px; line-height:1.65; color:var(--ink);
+  padding-left:10px; border-left:2px solid var(--accent)}
+.arow .fix b{font-weight:800; color:var(--accent-deep)}
+
+.pmd{font-size:14.5px; line-height:1.75; color:var(--ink-2)}
+.pmd h3{font-size:14.5px; font-weight:800; color:var(--ink); margin:14px 0 6px}
+.pmd h3:first-child{margin-top:0}
+.pmd ul{margin:0 0 0 18px}
+.pmd li{margin:3px 0}
+.pmd p{margin:6px 0}
+.pmd b{color:var(--ink); font-weight:700}
+
+@media (max-width:1180px){ .propgrid{grid-template-columns:1fr} .proppick{max-height:none} }
 
 @media (max-width:1180px){ .cond{grid-template-columns:repeat(2,1fr)} }
 @media (max-width:980px){
@@ -537,6 +639,7 @@ table.prof .sub2{font-size:12.5px; color:var(--ink-3); font-weight:600}
     <a href="#" data-view="gen"><span class="ic">📄</span>일반공고<span class="n num" id="nav-n-gen"></span></a>
     <a href="#" data-view="re"><span class="ic">🔁</span>유찰공고<span class="n num" id="nav-n-re"></span></a>
     <a href="#" data-view="urg"><span class="ic">⚡</span>긴급공고<span class="n num" id="nav-n-urg"></span></a>
+    <a href="#" data-view="prop"><span class="ic">🔍</span>제안서 분석<span class="n num" id="nav-n-prop"></span></a>
     <span class="split"></span>
     <a href="#" data-view="mkt"><span class="ic">◔</span>시장 리포트</a>
     <a href="#" data-view="comp"><span class="ic">⚔</span>경쟁사 분석<span class="n num" id="nav-n-comp"></span></a>
@@ -629,6 +732,22 @@ table.prof .sub2{font-size:12.5px; color:var(--ink-3); font-weight:600}
     <p class="foot">
       긴급으로 올라온 공고입니다 · 준비 기간이 짧으니 마감부터 확인하세요<br>
       그래서 이 화면만 <b>마감순</b>이 기본입니다 · 공고명을 누르면 나라장터 원문이 새 창으로 열립니다
+    </p>
+  </section>
+
+  <section class="view" id="view-prop" hidden>
+    <div class="listbar">
+      <div class="sortbar" id="prop-n"></div>
+      <input class="search" id="prop-q" type="search" placeholder="공고명 검색" aria-label="제안서 분석 공고명 검색">
+    </div>
+    <div class="propgrid">
+      <div class="proppick" id="prop-pick"></div>
+      <div class="propbody" id="prop-body"></div>
+    </div>
+    <p class="foot">
+      점수가 왜 그렇게 나왔는지를 항목 하나까지 펼쳐 봅니다 · 다른 화면에서 <b>점수 배지를 누르면</b> 그 공고로 바로 옵니다<br>
+      자가채점은 <b>총점 예상이 아니라 정량 항목 득점률</b>입니다 · 정성평가와 가격평가는 제안서를 써봐야 알고 공고끼리 비교값이 아니라 뺐습니다<br>
+      외부에서 만든 분석 문서가 있으면 아래에 함께 싣고, 우리 데이터로 대조한 결과를 표시합니다
     </p>
   </section>
 
@@ -859,6 +978,13 @@ const POSTS = RAW_POSTS.filter(it=>!drop(it));
 const PRES  = RAW_PRES.filter(it=>!drop(it));
 /* 예측점수는 여기서 한 번만 계산해 붙입니다 (정렬과 카드가 같은 값을 봅니다) */
 for(const it of [...POSTS, ...PRES]) it.score = predict(it);
+
+/* 제안서 분석 화면이 공고를 가리키는 번호.
+   카드에서 배지를 눌렀을 때 "어느 공고냐"를 넘겨야 하는데, 공고번호는
+   사전규격과 입찰공고에서 형식이 달라 한 자리로 못 씁니다. 화면을 만들 때
+   한 번 매기는 일련번호가 가장 단순하고 어긋날 일이 없습니다. */
+const PROP_ITEMS = [...POSTS, ...PRES];
+PROP_ITEMS.forEach((it,i)=>{ it._i = i; });
 
 /* 자격이 안 되는 공고는 목록에서 뺍니다.
    다만 "조용히 사라지는" 상태는 만들지 않습니다 — 우리 판정이 틀리면
@@ -1153,7 +1279,7 @@ const openUrl = it => it.url || it.files?.[0]?.url || "";
 (function(){
   const links=[...document.querySelectorAll(".nav a[data-view]")];
   const titles={dash:"대시보드", pre:"사전공고", gen:"일반공고", re:"유찰공고", urg:"긴급공고",
-    mkt:"시장 리포트", comp:"경쟁사 분석", org:"기관 프로파일", sheet:"영업 시트"};
+    prop:"제안서 분석", mkt:"시장 리포트", comp:"경쟁사 분석", org:"기관 프로파일", sheet:"영업 시트"};
   function show(v){
     document.querySelectorAll(".view").forEach(el=>{ el.hidden = el.id!=="view-"+v; });
     links.forEach(a=>a.classList.toggle("on", a.dataset.view===v));
@@ -1161,6 +1287,8 @@ const openUrl = it => it.url || it.files?.[0]?.url || "";
     window.scrollTo({top:0});
   }
   links.forEach(a=>a.addEventListener("click",e=>{ e.preventDefault(); show(a.dataset.view); }));
+  /* 다른 화면에서도 불러야 합니다 — 카드의 점수 배지를 누르면 제안서 분석으로 갑니다. */
+  window.showView = show;
 })();
 
 /* ═══ 목록 화면 공통 ═══
@@ -1285,22 +1413,27 @@ function preFindLine(it){
 function scoreBadge(it){
   const s = it.score;
   if(!s) return "";
-  if(s.blocked) return `<span class="sc no" title="${esc((s.why||[]).join(" · "))}">참가 불가</span>`;
+  /* 배지를 누르면 제안서 분석 화면으로 갑니다.
+     마우스를 올리면 요약이 뜨지만, 요약은 한 줄짜리라 왜 그 점수인지까지는
+     담기지 않습니다. 그 "왜"를 보려면 눌러야 합니다. */
+  const go = it._i===undefined ? "" : ` data-prop="${it._i}"`;
+  const T = (cls,tip,inner)=> go
+    ? `<button type="button" class="sc ${cls} goprop"${go} title="${tip}">${inner}</button>`
+    : `<span class="sc ${cls}" title="${tip}">${inner}</span>`;
+  if(s.blocked) return T("no", esc((s.why||[]).join(" · ")), "참가 불가");
   const band = s.total >= 75 ? "s3" : s.total >= 60 ? "s2" : s.total >= 45 ? "s1" : "s0";
   if(s.self){
     const tip = `심사표 자가채점 — 정량 ${s.max}점 중 ${s.got}점`
       + (s.unknown ? ` · 채점 못한 정량 ${s.unknown}점` + (s.unknownKinds?.length ? `(${s.unknownKinds.join("·")})` : "") : "")
       + `\n정성평가와 가격평가는 뺐습니다 (제안서를 써봐야 알고, 공고끼리 비교값이 아닙니다)`
       + (s.why.length ? `\n\n${s.why.join("\n")}` : "");
-    return `<span class="sc ${band} selfsc" title="${esc(tip)}">`
-      + `자가채점 <span class="v">${s.total}</span><small>%</small></span>`;
+    return T(`${band} selfsc`, esc(tip), `자가채점 <span class="v">${s.total}</span><small>%</small>`);
   }
   const tip = `추정 — 이 공고는 심사표를 못 읽어 공고 성격으로 매긴 값입니다`
     + `\n참가 ${s.entry}/40 · 실적 ${s.record}/35 · 평가 ${s.evaluation}/25`
     + (s.why.length ? `\n${s.why.join(" · ")}` : "")
     + (s.provisional ? `\n(회사정보 미입력 — 잠정 점수)` : "");
-  return `<span class="sc ${band} est${s.provisional?" prov":""}" title="${esc(tip)}">`
-    + `추정 <span class="v">${s.total}</span></span>`;
+  return T(`${band} est${s.provisional?" prov":""}`, esc(tip), `추정 <span class="v">${s.total}</span>`);
 }
 
 function cardHtml(it, kind){
@@ -1748,6 +1881,311 @@ cardView("view-gen", GEN_POSTS, "bid", "#nav-n-gen");
 cardView("view-re", RE_POSTS, "bid", "#nav-n-re");
 /* 긴급공고 — 준비 기간이 짧습니다. 여기서는 예측점수보다 마감이 먼저입니다. */
 cardView("view-urg", URG_POSTS, "bid", "#nav-n-urg", "due");
+
+/* ═══ 제안서 분석 ═══════════════════════════════════════════
+   다른 화면은 "어느 공고를 볼까"를 정하는 곳이고, 여기는 "왜 그 점수인가"를
+   끝까지 펼쳐 보는 곳입니다. 카드의 배지에 마우스를 올리면 한 줄 요약이 뜨지만
+   한 줄로는 항목별 근거가 안 들어갑니다. 실제로 "이 점수 왜 이래?" 라는 질문에
+   답하려면 심사표 한 줄 한 줄과 그 옆의 판정 근거가 같이 보여야 합니다.
+
+   보여주는 것:
+     ① 우리가 채점한 항목 — 배점 · 득점 · 무엇을 보고 그렇게 줬는지
+     ② 채점하지 않은 항목 — 왜 안 했는지 (뺀 것 / 못 한 것을 구분)
+     ③ 참가 자격 판정 — 항목별 판정과 공고문 근거 문장
+     ④ 공고문에서 읽어낸 원문 배점표 그대로
+     ⑤ 외부에서 만든 분석 문서가 있으면 함께, 우리 데이터와 대조한 결과와 같이 */
+(function(){
+  const pick = $("#prop-pick");
+  const body = $("#prop-body");
+  if(!pick || !body) return;
+
+  /* 분석할 수 있는 공고 = 점수가 붙은 공고 전부.
+     자가채점된 것을 위에 둡니다 — 근거가 공고문에 있는 쪽이 먼저 볼 값입니다. */
+  const RANK = it => (it.score?.self ? 0 : it.score?.blocked ? 2 : 1);
+  const LIST = PROP_ITEMS.filter(it=>it.score)
+    .sort((a,b)=> RANK(a)-RANK(b) || (b.score.total??0)-(a.score.total??0));
+
+  /* 외부 분석 문서. build-page.mjs 가 config/제안분석/*.md 를 읽어 심습니다. */
+  const DOCS = Array.isArray(DATA.proposals) ? DATA.proposals : [];
+  const nrm = s => String(s??"").replace(/[\s\[\]()（）]/g,"").toLowerCase();
+  /* 문서를 공고에 붙입니다. 공고번호가 적혀 있으면 그것이 확실하고,
+     없으면 제목이 서로를 포함하는지로 봅니다. 못 붙는 문서는 목록 아래에
+     따로 세웁니다 — 우리가 수집하지 않은 공고(예: 이미 마감된 건)도 있습니다. */
+  const docFor = it => DOCS.find(d =>
+    (d.bidNo && it.bidNo && String(d.bidNo)===String(it.bidNo)) ||
+    (d.title && it.title && (nrm(it.title).includes(nrm(d.title)) || nrm(d.title).includes(nrm(it.title)))));
+  const attached = new Set();
+  for(const it of LIST){ const d=docFor(it); if(d) attached.add(d); }
+  const LOOSE = DOCS.filter(d=>!attached.has(d));
+
+  const nprop = $("#prop-n");
+  if(nprop) nprop.innerHTML = `<span class="lb">분석 가능</span>`
+    + `<span class="sortbtn on">${LIST.length}건</span>`
+    + (DOCS.length ? `<span class="sortbtn">외부 문서 ${DOCS.length}건</span>` : "");
+  const navN = $("#nav-n-prop");
+  if(navN) navN.textContent = LIST.length + LOOSE.length;
+
+  const st = { sel:null, q:"" };
+
+  /* ── 왼쪽 목록 ── */
+  function drawPick(){
+    const q = st.q.trim().toLowerCase();
+    const rows = LIST.filter(it=>!q || (it.title||"").toLowerCase().includes(q)
+      || (it.org||"").toLowerCase().includes(q));
+    const one = (it) => {
+      const s = it.score;
+      const tag = s.blocked ? `<span class="sc no">불가</span>`
+        : s.self ? `<span class="sc ${s.total>=75?"s3":s.total>=60?"s2":"s1"} selfsc">자가 ${s.total}<small>%</small></span>`
+        : `<span class="sc ${s.total>=75?"s3":s.total>=60?"s2":"s1"} est">추정 ${s.total}</span>`;
+      const has = docFor(it) ? ` · <b>분석문서</b>` : "";
+      return `<button type="button" class="propitem${st.sel===it._i?" on":""}" data-pick="${it._i}">
+        <div class="t">${esc(it.title||"")}</div>
+        <div class="m">${tag}<span>${esc(it.org||"")}</span>${has}</div>
+      </button>`;
+    };
+    const loose = LOOSE.filter(d=>!q || (d.title||"").toLowerCase().includes(q))
+      .map((d,i)=>`<button type="button" class="propitem${st.sel==="d"+i?" on":""}" data-pick="d${i}">
+        <div class="t">${esc(d.title||"제목 없음")}</div>
+        <div class="m"><span class="sc s0">외부</span><span>${esc(d.org||"")}</span></div>
+      </button>`).join("");
+    pick.innerHTML = `<div class="ph">수집 공고 ${rows.length}건</div>`
+      + (rows.length ? rows.map(one).join("") : `<div class="empty">검색 결과가 없습니다.</div>`)
+      + (loose ? `<div class="ph">수집 목록에 없는 분석 문서</div>${loose}` : "");
+  }
+
+  /* ── 오른쪽: 점수 근거 ── */
+  /* 채점하지 않은 항목의 사유. 한 마디로 끊습니다 —
+     "채점 못함 — A — B" 처럼 줄표가 겹치면 어디까지가 사유인지 안 보입니다.
+     긴 설명은 표 아래 한 번만 씁니다. */
+  const KIND_NOTE = {
+    "정성": "제안서를 써봐야 아는 항목",
+    "가격": "우리가 쓰는 금액에 달린 항목",
+    "경영": "신용등급이 회사정보에 없습니다",
+    "인력": "참여 인력 명단이 회사정보에 없습니다",
+    "지역": "요구 지역 또는 우리 소재지를 모릅니다",
+    "실적": "실적 등급을 못 읽었거나 우리 실적이 비어 있습니다",
+    "신인도": "이 공고가 인정하는 인증 목록을 못 읽었습니다",
+    "기타": "우리가 분류하지 못한 항목입니다 (원문 표 확인)",
+  };
+
+  function bar(got, score){
+    const r = score ? Math.max(0, Math.min(1, got/score)) : 0;
+    const cls = r>=0.999 ? "" : r>0 ? "part" : "zero";
+    return `<div class="track"><div class="fill ${cls}" style="width:${Math.round(r*100)}%"></div></div>`;
+  }
+
+  function scoreTableBlock(it){
+    const s = it.self;
+    const raw = it.doc?.scoreTable;
+    if(!s || s.mode!=="심사표" || !raw) return "";
+    const scored = new Map(s.items.map(i=>[i.name+"|"+i.score, i]));
+    const rows = raw.items.map(ri=>{
+      const hit = scored.get(ri.name+"|"+ri.score);
+      if(hit) return `<tr>
+        <td class="nm">${esc(ri.name)}<span class="kd on">${esc(ri.kind)}</span></td>
+        <td class="pt">${ri.score}</td>
+        <td class="pt">${hit.got}${bar(hit.got, ri.score)}</td>
+        <td class="why">${esc(hit.why)}</td></tr>`;
+      const why = ["정성","가격"].includes(ri.kind)
+        ? `채점 대상 아님 — ${KIND_NOTE[ri.kind]}`
+        : `채점 못함 — ${KIND_NOTE[ri.kind] || "판단 근거가 없습니다"}`;
+      return `<tr class="off">
+        <td class="nm">${esc(ri.name)}<span class="kd">${esc(ri.kind)}</span></td>
+        <td class="pt">${ri.score}</td>
+        <td class="pt">—</td>
+        <td class="why">${esc(why)}</td></tr>`;
+    }).join("");
+    return `<div class="panel"><h2>심사표 항목별 채점<span class="soft">공고문에서 읽어낸 배점표 그대로</span>
+      <span class="cnt">정량 ${s.max}점 중 ${s.got}점</span></h2>
+      <div class="rawscroll"><table class="ptab"><thead><tr>
+        <th>평가 항목</th><th>배점</th><th>우리 득점</th><th>무엇을 보고 그렇게 줬나</th>
+      </tr></thead><tbody>${rows}</tbody></table></div>
+      <div class="pnote">
+        <b>정성을 왜 빼나</b> — 제안서를 써봐야 아는 항목이라 지금은 셀 수가 없고, 어차피 공고끼리
+        차이가 없어 넣으면 변별력만 사라집니다. <b>가격을 왜 빼나</b> — 우리가 얼마를 쓰느냐에 달린
+        값이라 공고끼리 비교하는 값이 못 됩니다.<br><br>
+        <b>분모가 ${s.max}점인 이유</b> — 위 표에서 채점 대상인 항목(실적·신인도·지역)의 배점만 더한 값입니다.
+        표 전체 합계 ${raw.total}점이 아닙니다. 정성·가격은 아예 빼고, 근거가 없어 못 채점한
+        ${s.unknown}점${s.unknownKinds?.length?`(${esc(s.unknownKinds.join("·"))})`:""}도 분모에서 뺐습니다.
+        모르는 항목을 0점으로 넣으면 우리 점수가 실제보다 낮게 나오고, 만점으로 넣으면 높게 나옵니다 —
+        둘 다 거짓말이라 아예 세지 않습니다.
+      </div></div>`;
+  }
+
+  function estBlock(it){
+    const s = it.score;
+    if(s.self) return "";
+    if(s.blocked) return `<div class="panel"><h2>점수를 매기지 않았습니다<span class="soft">참가할 수 없는 공고입니다</span></h2>
+      <div class="pnote">참가 자격에 걸리면 나머지가 아무리 좋아도 의미가 없어 총점을 0 으로 둡니다.
+        조건별 판정은 아래 <b>참가 자격 판정</b> 표에 있습니다.<br>
+        우리 판정이 틀렸다고 보시면 목록 화면 위의 <b>제외 N건 · 보기</b> 로 되돌려 볼 수 있습니다.</div></div>`;
+    const rows = [
+      ["참가 가능성", s.entry, 40, "지역·업종·실적 제한에 걸리는가, 컨소시엄으로 풀 수 있는가"],
+      ["유사실적",   s.record, 35, "우리 최대 수행실적이 이 사업 규모를 감당하는가"],
+      ["평가 유리도", s.evaluation, 25, "협상·기술배점처럼 기술로 붙는 판인가"],
+    ].map(([n,g,m,d])=>`<tr><td class="nm">${n}</td><td class="pt">${m}</td>
+      <td class="pt">${g ?? "—"}${g==null?"":bar(g,m)}</td><td class="why">${d}</td></tr>`).join("");
+    return `<div class="panel"><h2>추정 점수의 계산<span class="soft">이 공고는 심사표를 못 읽었습니다</span>
+      <span class="cnt">100점 중 ${s.total}점</span></h2>
+      <table class="ptab"><thead><tr><th>항목</th><th>배점</th><th>점수</th><th>보는 것</th></tr></thead>
+      <tbody>${rows}</tbody></table>
+      <div class="pnote">
+        <b>이 값은 순서를 정하는 값이지 확정 점수가 아닙니다.</b> 가중치(40/35/25)는 공고에서 온 것이 아니라
+        우리가 정한 것입니다. 공고문을 읽어 심사표를 뽑아내면 이 화면은 자가채점으로 바뀝니다 —
+        <b>공고문-분석.bat</b> 을 돌리면 됩니다.
+        ${(s.why||[]).length ? `<br><br>계산 내역 — ${esc((s.why||[]).join(" · "))}` : ""}
+      </div></div>`;
+  }
+
+  function eligBlock(it){
+    const el = it.doc?.eligibility;
+    if(!el || !el.checks?.length) return "";
+    const rows = el.checks.map(c=>`<tr>
+      <td class="nm">${esc(c.key)}</td>
+      <td><span class="jud ${c.verdict==="불가"?"no":c.verdict==="가능"?"yes":"chk"}">${esc(c.verdict)}</span></td>
+      <td class="why">${esc(c.detail||"")}${c.evidence?`<br><span style="color:var(--ink-3)">공고문: ${esc(c.evidence)}</span>`:""}</td>
+    </tr>`).join("");
+    return `<div class="panel"><h2>참가 자격 판정<span class="soft">공고문 문장을 근거로</span>
+      <span class="cnt">${esc(el.verdict)}</span></h2>
+      <table class="ptab"><thead><tr><th>항목</th><th>판정</th><th>근거</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>`;
+  }
+
+  function creditBlock(it){
+    const cs = it.doc?.credits ?? [];
+    if(!cs.length) return "";
+    const rows = cs.map(c=>{
+      const have = OUR_CERTS.has(normCert(c.term));
+      return `<tr class="${have?"":"off"}"><td class="nm">${esc(c.term)}</td>
+        <td><span class="jud ${have?"yes":"chk"}">${have?"보유":"미보유"}</span></td>
+        <td class="why">${esc(c.evidence||"")}</td></tr>`;
+    }).join("");
+    const n = cs.filter(c=>OUR_CERTS.has(normCert(c.term))).length;
+    return `<div class="panel"><h2>이 공고가 쳐 주는 인증<span class="soft">우리가 가진 것과 대조</span>
+      <span class="cnt">${cs.length}개 중 ${n}개 보유</span></h2>
+      <table class="ptab"><thead><tr><th>인증</th><th>보유</th><th>공고문 근거</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>`;
+  }
+
+  function rawBlock(it){
+    const raw = it.doc?.scoreTable;
+    if(!raw?.rows?.length) return "";
+    const tb = raw.rows.map(r=>`<tr>${r.map(c=>`<td>${esc(c)}</td>`).join("")}</tr>`).join("");
+    return `<div class="panel"><h2>공고문 원문 배점표<span class="soft">우리가 읽어낸 그대로 · 배점 열 "${esc(raw.column||"")}"</span>
+      <span class="cnt">합계 ${raw.total}</span></h2>
+      <div class="rawscroll"><table class="rawtab"><tbody>${tb}</tbody></table></div>
+      <div class="pnote">위 표를 잘못 읽었으면 점수도 틀립니다. 이상하면
+        <b>${esc(it.doc?.source||"공고문")}</b> 원본을 열어 대조해 주세요.</div></div>`;
+  }
+
+  /* ── 외부 분석 문서 ── */
+  const IMPACT = { "치명":0, "중요":1 };
+  function auditBlock(d){
+    if(!d) return "";
+    const findings = (d.findings||[]).map(f=>{
+      const lv = IMPACT[f.impact] ?? 2;
+      return `<div class="arow f${lv}">
+        <div class="ah"><span class="lv">${esc(f.impact||"")}</span><span class="q">${esc(f.claim||"")}</span></div>
+        <div class="ev">${esc(f.evidence||"")}</div>
+        ${f.correction?`<div class="fix"><b>바로잡으면</b> ${esc(f.correction)}</div>`:""}
+      </div>`;
+    }).join("");
+    return `${findings?`<div class="panel"><h2>이 분석 문서를 우리 데이터로 대조한 결과
+        <span class="soft">고쳐야 할 곳</span><span class="cnt">${d.findings.length}건</span></h2>
+      <div class="audit">${findings}</div></div>`:""}
+      ${d.html?`<div class="panel"><h2>외부 분석 문서 원문<span class="soft">${esc(d.file||"")}</span></h2>
+      <div class="pmd">${d.html}</div></div>`:""}`;
+  }
+
+  function drawBody(){
+    if(st.sel===null){
+      body.innerHTML = `<div class="listwrap-empty"><b>왼쪽에서 공고를 고르세요</b>
+        <p>다른 화면에서 점수 배지를 눌러도 바로 여기로 옵니다.</p></div>`;
+      return;
+    }
+    if(String(st.sel).startsWith("d")){
+      const d = LOOSE[Number(String(st.sel).slice(1))];
+      if(!d){ body.innerHTML=""; return; }
+      body.innerHTML = `<div class="phead"><h2>${esc(d.title||"")}</h2>
+        <div class="sub">${[d.org,d.budget?억(d.budget):"",d.deadline?`마감 ${esc(d.deadline)}`:""]
+          .filter(Boolean).map(esc).join(`<span class="dot">·</span>`)}</div>
+        <div class="pnote">이 공고는 우리 수집 목록에 없습니다 — 마감이 지났거나, 키워드에 걸리지 않았거나,
+          나라장터가 아닌 곳에서 온 건입니다. 그래서 우리 자가채점은 없고 문서 검토만 있습니다.</div>
+        </div>${auditBlock(d)}`;
+      return;
+    }
+    const it = PROP_ITEMS[st.sel];
+    if(!it){ body.innerHTML=""; return; }
+    const s = it.score, d = docFor(it);
+    const u = g2bLink(it);
+    const cls = s.blocked ? "no" : s.self ? "selfsc" : "est";
+    /* 불가 사유는 "참가 불가: 지역" 보다 "부산광역시 제한 · 우리 서울특별시" 가
+       훨씬 쓸모 있습니다. 자격 판정의 상세 문장이 있으면 그것을 먼저 씁니다. */
+    /* judgeBlocked 의 blockWhy 는 같은 자격 판정에서 만들어지므로 그대로 이으면
+       똑같은 문장이 두 번 나옵니다. 자격 판정에 없는 사유(직접생산확인 품목 등)만 덧붙입니다. */
+    const echk = (it.doc?.eligibility?.checks ?? []).filter(c=>c.verdict==="불가");
+    const keys = new Set(echk.map(c=>c.key));
+    const bwhy = [
+      ...echk.map(c=>`${c.key} — ${c.detail}`),
+      ...(it.self?.blockWhy ?? []).filter(w=>![...keys].some(k=>String(w).startsWith(k))),
+    ];
+    const head = s.blocked
+      ? `<div class="big">참가 불가</div><div class="fx">${esc((bwhy.length?bwhy:(s.why||[])).join("<br>")).replace(/&lt;br&gt;/g,"<br>")}</div>`
+      : s.self
+        ? `<div class="big">${s.total}<small>%</small></div>
+           <div class="fx"><b>자가채점</b> — 이 공고의 심사표에서 우리가 채점할 수 있는 정량 항목만 셌습니다.<br>
+             정량 <b>${it.self.max}점</b> 중 <b>${it.self.got}점</b> = ${s.total}%
+             ${it.self.unknown?` · 근거가 없어 못 센 정량 ${it.self.unknown}점`:""}</div>`
+        : `<div class="big">${s.total}</div>
+           <div class="fx"><b>추정</b> — 심사표를 못 읽어 공고 성격만으로 매긴 값입니다.<br>
+             다른 공고와 견주는 순서용이지 받을 점수가 아닙니다.</div>`;
+    body.innerHTML = `<div class="phead">
+        <h2>${u?`<a class="nmlink" href="${esc(u)}" target="_blank" rel="noopener">${esc(it.title||"")}<span class="ext"> ↗</span></a>`:esc(it.title||"")}</h2>
+        <div class="sub">${[esc(it.org||""), 억(it.budget ?? it.price), esc(it.winnerMethod||""),
+          it.bidNo?`공고 ${esc(it.bidNo)}`:""].filter(Boolean).join(`<span class="dot">·</span>`)}</div>
+        <div class="pscore ${cls}">${head}</div>
+      </div>
+      ${scoreTableBlock(it)}
+      ${estBlock(it)}
+      ${eligBlock(it)}
+      ${creditBlock(it)}
+      ${rawBlock(it)}
+      ${auditBlock(d)}
+      ${(!it.doc)?`<div class="panel"><h2>공고문을 아직 안 읽었습니다</h2>
+        <div class="pnote">첨부 공고문을 읽으면 참가 자격과 심사표가 확정되고, 이 화면이
+          추정에서 자가채점으로 바뀝니다. <b>공고문-분석.bat</b> 을 돌려 주세요.</div></div>`:""}`;
+  }
+
+  function select(i){ st.sel = i; drawPick(); drawBody(); }
+
+  pick.addEventListener("click", e=>{
+    const b = e.target.closest("[data-pick]");
+    if(!b) return;
+    const v = b.dataset.pick;
+    select(/^d/.test(v) ? v : Number(v));
+  });
+  const q = $("#prop-q");
+  if(q) q.addEventListener("input", ()=>{ st.q=q.value; drawPick(); });
+
+  /* 어느 화면에서든 점수 배지를 누르면 이리로 옵니다. */
+  document.addEventListener("click", e=>{
+    const b = e.target.closest("[data-prop]");
+    if(!b) return;
+    e.preventDefault();
+    if(window.showView) window.showView("prop");
+    select(Number(b.dataset.prop));
+    const el = document.querySelector(".propitem.on");
+    if(el) el.scrollIntoView({block:"nearest"});
+  });
+
+  /* 메뉴로 들어왔을 때 오른쪽이 비어 있으면 한 번 더 눌러야 합니다.
+     첫 공고를 골라 두면 바로 볼 것이 있습니다 — 정렬상 첫 줄이 자가채점된 공고입니다. */
+  if(LIST.length) st.sel = LIST[0]._i;
+  else if(LOOSE.length) st.sel = "d0";
+
+  drawPick();
+  drawBody();
+})();
 
 </script>
 </body>

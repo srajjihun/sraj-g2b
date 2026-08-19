@@ -503,5 +503,73 @@ function buildZip(files) {
   check("번호 목록이 1부터 다시 센다", /w:numId w:val="2"/.test(doc) && !/w:numId w:val="3"/.test(doc));
 }
 
+/* ⑩ 제안 분석 문서 — 사람이 쓴 파일이라 형식이 흔들립니다.
+      머리말·검토표·원문 세 구역이 각각 제자리로 들어가는지 봅니다. */
+{
+  const { parseProposal, miniMd, loadProposals } = await import("./lib/proposals.mjs");
+  // 심사표 항목 분류 — 제안서를 읽고 매기는 항목이 "기타"로 떨어지면
+  // 화면이 "채점 못한 정량"이라고 사실과 다른 말을 합니다.
+  {
+    const { extractRequirements } = await import("./lib/require.mjs");
+    const grid = [
+      ["평가항목", "배점", "세부기준"],
+      ["기술능력(개발·제작·구현 가능성)", "25", ""],
+      ["유사용역실적", "20", "최근 3년 1억 이상 3건 이상 20점"],
+      ["사업수행능력", "10", "경영상태·인력 종합"],
+      ["입찰가격", "45", ""],
+    ];
+    const t = extractRequirements("", [{ grid }]).scoreTable;
+    const kind = (n) => t.items.find((i) => i.name.startsWith(n))?.kind;
+    check("기술능력은 정성으로 분류한다", kind("기술능력") === "정성", kind("기술능력"));
+    check("사업수행능력은 정성으로 끌려가지 않는다", kind("사업수행능력") !== "정성", kind("사업수행능력"));
+    check("실적·가격 분류는 그대로", kind("유사용역실적") === "실적" && kind("입찰가격") === "가격",
+          `${kind("유사용역실적")}/${kind("입찰가격")}`);
+  }
+  const d = parseProposal([
+    "# 시험 공고명",
+    "",
+    "기관: 한라대학교 (총무처)",
+    "금액: 50,000,000원 (부가세 포함)",
+    "마감: 2026-08-18",
+    "공고번호: 20260800123",
+    "출처: 외부 도구",
+    "",
+    "## 검토",
+    "- 치명 | 기관을 잘못 붙였다 | 033 은 강원이다 | 원주 한라대학교",
+    "- 몰라 | 등급 오타 | 근거",
+    "- 형식이 틀린 줄",
+    "",
+    "## 원문",
+    "## 요약",
+    "- 첫째 **굵게**",
+    "본문 문단.",
+  ].join("\n"), "t.md");
+
+  check("제목·기관을 읽는다", d.title === "시험 공고명" && d.org === "한라대학교 (총무처)", `${d.title} / ${d.org}`);
+  check("금액에서 숫자만 뽑는다", d.budget === 50000000, String(d.budget));
+  check("마감·공고번호를 읽는다", d.deadline === "2026-08-18" && d.bidNo === "20260800123");
+  check("검토표를 읽는다", d.findings.length === 2, `${d.findings.length}건`);
+  check("등급 오타는 사소로 떨어진다", d.findings[1].impact === "사소", d.findings[1].impact);
+  check("바로잡은 값이 붙는다", d.findings[0].correction === "원주 한라대학교", d.findings[0].correction);
+  check("원문만 본문이 된다", /<h3>요약<\/h3>/.test(d.html) && !/검토/.test(d.html), d.html.slice(0, 60));
+  check("굵게가 살아난다", /<b>굵게<\/b>/.test(d.html));
+  // 머리말이 본문으로 새면 화면에 "기관: ..." 이 두 번 나옵니다.
+  check("머리말이 본문으로 새지 않는다", !/기관/.test(d.html), d.html.slice(0, 80));
+  check("태그를 이스케이프한다", miniMd("<script>x</script>").includes("&lt;script&gt;"));
+  check("폴더가 없어도 죽지 않는다", (await loadProposals(new URL("no-such-dir/", import.meta.url))).length === 0);
+}
+
+/* ⑪ 화면 틀 — 제안서 분석 화면이 붙어 있는지. 사람이 손으로 고치다
+      한쪽만 지우면 메뉴는 있는데 화면이 없는 상태가 됩니다. */
+{
+  const { readFile } = await import("node:fs/promises");
+  const html = await readFile(new URL("../../g2b.html", import.meta.url), "utf8");
+  check("제안서 분석 메뉴가 있다", /data-view="prop"/.test(html));
+  check("제안서 분석 화면이 있다", /id="view-prop"/.test(html));
+  check("메뉴와 화면의 이름이 맞다", /titles=\{[^}]*prop:/.test(html));
+  check("점수 배지를 누르면 갈 수 있다", /data-prop=/.test(html) && /window\.showView/.test(html));
+  check("데이터 마커가 살아 있다", html.includes("<!--G2B_DATA_START-->") && html.includes("<!--G2B_DATA_END-->"));
+}
+
 console.log(`\n[자체점검] 통과 ${pass} · 실패 ${fail}`);
 if (fail) process.exitCode = 1;
