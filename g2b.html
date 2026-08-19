@@ -1115,14 +1115,14 @@ const openUrl = it => it.url || it.files?.[0]?.url || "";
       const tip=`심사표 자가채점 — 정량 ${sc.max}점 중 ${sc.got}점`
         + (sc.unknown?` · 채점 못한 정량 ${sc.unknown}점` + (sc.unknownKinds?.length ? `(${sc.unknownKinds.join("·")})` : ""):"")
         + (sc.why.length?`\n\n${sc.why.join("\n")}`:"");
-      return `<span class="sc ${band} selfsc" title="${esc(tip)}"><span class="v">${sc.total}</span><small>%</small></span>`;
+      return `<button type="button" class="sc ${band} selfsc goprop" data-prop="${it._i}" title="${esc(tip)}"><span class="v">${sc.total}</span><small>%</small></button>`;
     }
     const tip=`추정 — 심사표를 못 읽어 공고 성격으로 매긴 값입니다`
       + `\n참가 ${sc.entry}/40 · 실적 ${sc.record}/35 · 평가 ${sc.evaluation}/25`
       + (t!==null&&t!==undefined?`\n기술 ${t} : 가격 ${it.doc?.rate?.price ?? it.priceRate ?? 100-t}`:"")
       + (sc.provisional?"\n(회사정보 미입력 — 잠정)":"");
-    return `<span class="sc ${band} est${sc.provisional?" prov":""}" title="${esc(tip)}">`
-      + `<span class="v">${sc.total}</span></span>`;
+    return `<button type="button" class="sc ${band} est${sc.provisional?" prov":""} goprop" data-prop="${it._i}" title="${esc(tip)}">`
+      + `<span class="v">${sc.total}</span></button>`;
   };
   // 링크가 없는 행은 data-url 을 아예 달지 않습니다 — 커서·호버·키보드 모두 그에 맞게 꺼집니다.
   const row = it => { const u=openUrl(it); return `<tr ${u?`data-url="${esc(u)}" tabindex="0" role="link" aria-label="${esc(it.title)} 원문 열기"`:`class="nolink"`}>
@@ -2171,12 +2171,15 @@ cardView("view-urg", URG_POSTS, "bid", "#nav-n-urg", "due");
   document.addEventListener("click", e=>{
     const b = e.target.closest("[data-prop]");
     if(!b) return;
+    /* 주목할 공고 표는 행 전체가 나라장터를 여는 링크입니다. 배지 클릭이 행까지
+       번지면 새 창이 같이 뜹니다. 가로채기 단계에서 잡아 번짐을 끊습니다. */
     e.preventDefault();
+    e.stopPropagation();
     if(window.showView) window.showView("prop");
     select(Number(b.dataset.prop));
     const el = document.querySelector(".propitem.on");
     if(el) el.scrollIntoView({block:"nearest"});
-  });
+  }, true);
 
   /* 메뉴로 들어왔을 때 오른쪽이 비어 있으면 한 번 더 눌러야 합니다.
      첫 공고를 골라 두면 바로 볼 것이 있습니다 — 정렬상 첫 줄이 자가채점된 공고입니다. */
