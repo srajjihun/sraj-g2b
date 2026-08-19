@@ -69,6 +69,8 @@ export function parseCompany(text) {
     licenses: list(raw["업종등록"]),
     certs: list(raw["인증"]),
     credit: (raw["신용등급"] || "").trim().toUpperCase(),
+    // 참여인력 항목을 어떻게 볼지. 지금은 "만점" 하나뿐이고, 비면 미확인입니다.
+    people: /만점/.test(raw["참여인력"] || "") ? "만점" : "",
   };
 
   // 몇 개나 채워졌는지 — 화면에서 "정보 부족" 안내를 띄우는 데 씁니다.

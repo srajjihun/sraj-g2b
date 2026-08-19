@@ -96,6 +96,14 @@ async function main() {
       ? `[회사정보] ${payload.company.filled}개 항목 반영 — 예측점수를 계산합니다`
       : `[회사정보] config/회사정보.md 가 비어 있습니다 — 예측점수는 공고 정보만으로 잠정 계산합니다`
   );
+  /* 유사과업사례를 화면에서 보여주려면 건별 실적이 페이지에 있어야 합니다.
+     지금까지는 건수·합계 같은 요약값만 넘겼는데, 제안서에 붙일 사례를 고르려면
+     "어느 해에 어느 기관에 얼마짜리를 했는지" 가 한 줄씩 보여야 합니다.
+     data/g2b/ 와 g2b-live.html 은 gitignore 라 이 목록이 저장소로 나가지 않습니다. */
+  payload.records = records.ok
+    ? records.all.map((r) => ({ year: r.year, amount: r.amount, org: r.org, title: r.title, type: r.type, kw: r.kw }))
+    : [];
+
   // 사람이 쓴(또는 다른 도구가 만든) 제안 분석 문서. 제안서 분석 화면에 실립니다.
   payload.proposals = await loadProposals();
   if (payload.proposals.length) {

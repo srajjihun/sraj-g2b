@@ -2047,6 +2047,66 @@ cardView("view-urg", URG_POSTS, "bid", "#nav-n-urg", "due");
       </div></div>`;
   }
 
+  /* ── 유사과업사례 ──
+     제안서에 붙일 실적을 고르는 자리입니다. 건수만 보여 주면 "그래서 뭘 쓰지"
+     에 답이 안 되므로 건별로 전부 늘어놓습니다.
+
+     "유사" 의 잣대는 분야입니다. 공고를 분류하는 그 키워드 엔진으로 우리
+     실적도 분류하기 때문에, 같은 분야라는 말이 뜻을 가집니다.
+     같은 발주기관에 한 일이 있으면 그것부터 보여줍니다 — 제안서에서 가장
+     힘이 센 한 줄입니다. */
+  const RECORDS = Array.isArray(DATA.records) ? DATA.records : [];
+
+  function similarBlock(it){
+    if(!RECORDS.length) return "";
+    const groups = (it.kw ?? []).filter(g=>g!=="분류");
+    const orgKey = String(it.org??"").replace(/\s|\(.*?\)/g,"");
+    const sameOrg = r => orgKey && String(r.org??"").replace(/\s|\(.*?\)/g,"").includes(orgKey.slice(0,4));
+    const hit = RECORDS.filter(r => sameOrg(r) || (r.kw??[]).some(g=>groups.includes(g)));
+    if(!hit.length) return `<div class="panel"><h2>유사과업사례<span class="soft">우리 실적 ${RECORDS.length}건에서</span></h2>
+      <div class="pnote">이 공고 분야(${groups.map(esc).join(" · ")||"미분류"})에 맞는 실적이 없습니다.
+        제안서에 붙일 사례를 다른 분야에서 찾아야 합니다.</div></div>`;
+
+    // 요구 실적 금액이 있으면 그 문턱을 넘는 건을 표시합니다 — 실적증명을 낼 때 바로 씁니다.
+    const need = it.doc?.record?.amount ?? null;
+    const years = it.doc?.record?.years ?? null;
+    const thisYear = new Date().getFullYear();
+    const inYears = r => years===null || r.year >= thisYear - years;
+
+    /* 제안서에 쓸 순서로 세웁니다 — 같은 발주처, 요건을 넘는 건, 그다음 최신순.
+       요건에 못 미치는 건을 흐리게 하면 대부분이 흐려져 표를 읽을 수가 없습니다.
+       못 미치는 것을 지우는 대신 넘는 것에 표를 답니다. */
+    const meets = r => need!==null && r.amount>=need && inYears(r);
+    hit.sort((a,b)=> (sameOrg(b)?1:0)-(sameOrg(a)?1:0) || (meets(b)?1:0)-(meets(a)?1:0)
+                  || b.year-a.year || b.amount-a.amount);
+    const rows = hit.map(r=>{
+      const org = sameOrg(r) ? `<b>${esc(r.org)}</b> <span class="kd on">같은 발주처</span>` : esc(r.org);
+      return `<tr>
+        <td class="pt num">${r.year}</td>
+        <td class="pt num">${억(r.amount)}${meets(r)?` <span class="kd on">요건 충족</span>`:""}</td>
+        <td>${org}</td>
+        <td class="why">${esc(r.title)}</td>
+        <td>${(r.kw??[]).map(g=>`<span class="kd">${esc(g)}</span>`).join(" ")}</td>
+      </tr>`;
+    }).join("");
+
+    const 합 = hit.reduce((a,r)=>a+(r.amount||0),0);
+    const 요건충족 = need===null ? null : hit.filter(r=>r.amount>=need && inYears(r)).length;
+    const 같은기관 = hit.filter(sameOrg).length;
+    return `<div class="panel"><h2>유사과업사례<span class="soft">같은 분야 실적을 전부</span>
+      <span class="cnt">${hit.length}건 · ${억(합)}</span></h2>
+      <div class="pnote" style="margin:0 0 9px">
+        ${같은기관 ? `<b>같은 발주처 ${같은기관}건</b> — 제안서에서 가장 힘이 센 사례입니다. ` : ""}
+        ${요건충족===null
+          ? `이 공고는 실적 요건 금액을 못 읽었습니다.`
+          : `이 공고가 요구하는 <b>${억(need)} 이상${years?` · 최근 ${years}년`:""}</b> 을 넘는 건은
+             <b>${요건충족}건</b>입니다${요건충족?" — 실적증명서를 이 건들로 준비하세요.":" — 요건을 넘는 실적이 없습니다."}`}
+      </div>
+      <div class="rawscroll"><table class="ptab"><thead><tr>
+        <th>연도</th><th>금액</th><th>발주처</th><th>과업명</th><th>분야</th>
+      </tr></thead><tbody>${rows}</tbody></table></div></div>`;
+  }
+
   /* ── 공고 개요 ──
      제안서를 쓰기 전에 한 번은 확인해야 하는 것들을 한 자리에 모읍니다.
      흩어져 있으면 공동수급 불허 같은 것을 놓칩니다. */
@@ -2246,6 +2306,7 @@ cardView("view-urg", URG_POSTS, "bid", "#nav-n-urg", "due");
       ${scoreTableBlock(it)}
       ${estBlock(it)}
       ${swBlock(it)}
+      ${similarBlock(it)}
       ${strategyBlock(it)}
       ${eligBlock(it)}
       ${creditBlock(it)}

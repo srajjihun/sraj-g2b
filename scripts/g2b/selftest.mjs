@@ -380,7 +380,8 @@ function buildZip(files) {
   check("총점이 부풀지 않는다", req.scoreTable?.total === 100, `${req.scoreTable?.total}`);
 
   // 자가채점까지 이어서 — 채점 못하는 항목이 실적으로 지어내지지 않아야 합니다.
-  const company = { region: "서울특별시", maxRecord: 8e8, certs: ["벤처기업"], directProduce: ["기타행사기획및대행서비스"] };
+  const company = { region: "서울특별시", maxRecord: 8e8, certs: ["벤처기업"],
+                    directProduce: ["기타행사기획및대행서비스"], people: "만점" };
   const s = selfScore({ scoreTable: req.scoreTable, credits: [{ term: "여성기업" }, { term: "벤처기업" }, { term: "직접생산확인" }], region: null, directItems: null }, company, 3e8);
   // 실적 10 + 인력 15 + 신인도 5 = 30 이 채점 대상입니다.
   // (참여인력은 2026-08 부터 회사 방침으로 만점 처리합니다)
@@ -463,7 +464,7 @@ function buildZip(files) {
       ["과업제안내용", "75", ""],
     ];
     const t = extractRequirements("", [{ grid }]).scoreTable;
-    const co = { region: "서울특별시", credit: "BB0", maxRecord: 8e8, certs: [], directProduce: [] };
+    const co = { region: "서울특별시", credit: "BB0", maxRecord: 8e8, certs: [], directProduce: [], people: "만점" };
     const s2 = selfScore({ scoreTable: t, credits: [], region: null, directItems: null }, co, 1e8, r);
     const get = (k) => s2.items.find((i) => i.kind === k);
     check("경영상태를 신용등급으로 채점한다", get("경영")?.got === 8, JSON.stringify(get("경영")));
@@ -476,6 +477,11 @@ function buildZip(files) {
                          { ...co, credit: "" }, 1e8, r);
     check("신용등급이 없으면 경영은 미확인", !s3.items.some((i) => i.kind === "경영") && s3.unknown === 10,
           `unknown=${s3.unknown}`);
+    // 참여인력 만점은 코드가 아니라 회사정보.md 의 설정입니다. 안 켜면 만점이 붙으면 안 됩니다.
+    const s5 = selfScore({ scoreTable: t, credits: [], region: null, directItems: null },
+                         { ...co, people: "" }, 1e8, r);
+    check("참여인력 방침을 안 켜면 미확인", !s5.items.some((i) => i.kind === "인력") && s5.unknownKinds.includes("인력"),
+          JSON.stringify(s5.unknownKinds));
     // 구간표를 못 읽었으면 등급만으로 점수를 지어내면 안 됩니다.
     const t2 = extractRequirements("", [{ grid: [["평가항목", "배점", "세부"], ["경영상태", "10", "재무제표 평가"], ["과업제안내용", "90", ""]] }]).scoreTable;
     const s4 = selfScore({ scoreTable: t2, credits: [], region: null, directItems: null }, co, 1e8, r);
