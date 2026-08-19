@@ -42,7 +42,7 @@ rem PC had wandered onto an unrelated branch, so every run kept syncing
 rem to that wrong branch - old and new files mixed, which is exactly the
 rem problem this file exists to prevent. Pinning it means any run
 rem repairs the checkout no matter where HEAD was.
-set "BR=claude/g2b-bidding-collector-y605rn"
+set "BR=main"
 
 git fetch origin %BR%
 if errorlevel 1 (
