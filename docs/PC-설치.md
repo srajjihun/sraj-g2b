@@ -22,11 +22,12 @@
 3. 아래 한 줄을 통째로 복사해 붙여넣고 엔터. (마우스 오른쪽 클릭이 붙여넣기입니다)
 
 ```
-git clone https://github.com/srajjihun/sraj-g2b.git ..\sraj-g2b && xcopy /e /i /y "data\g2b" "..\sraj-g2b\data\g2b" && cd /d ..\sraj-g2b && call update.bat
+git clone https://github.com/srajjihun/sraj-g2b.git ..\sraj-g2b && xcopy /e /i /y "data\g2b" "..\sraj-g2b\data\g2b" && cd /d ..\sraj-g2b && node scripts\g2b\reclassify.mjs && node scripts\g2b\build-page.mjs && start "" g2b-live.html
 ```
 
-이 한 줄이 하는 일 — 새 폴더를 내려받고, 모아둔 원본을 옮기고, 화면을 다시
-만들어 띄웁니다. 나라장터를 부르지 않으므로 호출 한도와 무관합니다.
+이 한 줄이 하는 일 — 새 폴더를 내려받고, 모아둔 원본을 옮기고, 지금 키워드로
+다시 분류해 화면을 만들어 띄웁니다. 나라장터를 부르지 않으므로 호출 한도와
+무관합니다.
 
 화면이 뜨면 성공입니다. 앞으로 **화면-새로고침.bat 은 새 폴더(sraj-g2b) 것**을
 누르세요. 바탕화면에 바로가기를 만들어 두면 편합니다.
