@@ -382,10 +382,17 @@ function buildZip(files) {
   // 자가채점까지 이어서 — 채점 못하는 항목이 실적으로 지어내지지 않아야 합니다.
   const company = { region: "서울특별시", maxRecord: 8e8, certs: ["벤처기업"], directProduce: ["기타행사기획및대행서비스"] };
   const s = selfScore({ scoreTable: req.scoreTable, credits: [{ term: "여성기업" }, { term: "벤처기업" }, { term: "직접생산확인" }], region: null, directItems: null }, company, 3e8);
-  check("채점 대상은 실적·신인도뿐 (지역은 요구지역 미상이라 제외)", s.max === 15, `max=${s.max}`);
-  // 인력 15 + 경영 10 + 지역 5(요구 지역을 못 읽었으므로) = 30.
-  // 지역도 미확인으로 가는 것이 맞습니다 — 어디를 요구하는지 모르면 채점할 수 없습니다.
-  check("채점 못하는 항목은 미확인으로 빠진다", s.unknown === 30, `unknown=${s.unknown}`);
+  // 실적 10 + 인력 15 + 신인도 5 = 30 이 채점 대상입니다.
+  // (참여인력은 2026-08 부터 회사 방침으로 만점 처리합니다)
+  check("실적·인력·신인도를 채점한다", s.max === 30, `max=${s.max}`);
+  // 경영 10 — 이 회사 설정에 신용등급이 없습니다.
+  // 지역  5 — 어디를 요구하는지 공고문에서 못 읽었습니다.
+  // 둘 다 모르는 것이라 지어내지 않고 미확인으로 뺍니다.
+  check("근거 없는 항목은 미확인으로 빠진다", s.unknown === 15, `unknown=${s.unknown}`);
+  check("무엇을 못 셌는지 남긴다", ["경영", "지역"].every((k) => s.unknownKinds.includes(k)),
+        JSON.stringify(s.unknownKinds));
+  check("참여인력은 만점으로 들어간다", s.items.find((i) => i.kind === "인력")?.got === 15,
+        JSON.stringify(s.items.find((i) => i.kind === "인력")));
   check("실적은 등급표대로 만점", s.items.find((i) => i.kind === "실적")?.got === 10,
         JSON.stringify(s.items.find((i) => i.kind === "실적")));
   check("신인도는 보유 비율", Math.abs((s.items.find((i) => i.kind === "신인도")?.got ?? 0) - 3.3) < 0.1,
@@ -413,6 +420,26 @@ function buildZip(files) {
   check("등급이 아닌 문장은 안 읽는다", parseCountTiers("참여인력 3건 이상 경력").length === 0);
   check("기간을 읽는다", parseYears("최근 5년간 실적") === 5);
 
+  /* 신용평가등급 구간 — 경영상태 항목을 채점하는 근거입니다.
+     등급의 꼬리표(+ 0 -)가 등급을 가르는 값이라 그것이 떨어지면 판정이 통째로 어긋납니다. */
+  {
+    const { parseCreditTiers, creditScore, gradeRank } = await import("./lib/require.mjs");
+    const t = parseCreditTiers("신용평가등급 A0 이상 10점, BBB-, BB+, BB0, BB- 구간 8점, B+ 이하 6점");
+    check("등급 구간을 세 칸으로 읽는다", t.length === 3, JSON.stringify(t.map((x) => [x.grades.join("/"), x.score])));
+    check("쉼표로 나열된 등급이 한 칸에 묶인다", t[1].grades.length === 4, t[1].grades.join("/"));
+    check("꼬리표가 떨어지지 않는다", t[1].grades.includes("BB-") && t[1].grades.includes("BBB-"), t[1].grades.join("/"));
+    check("BB0 은 8점 칸", creditScore(t, "BB0")?.score === 8, String(creditScore(t, "BB0")?.score));
+    check("A0 은 이상 칸이라 10점", creditScore(t, "A0")?.score === 10);
+    check("AAA 도 이상 칸에 든다", creditScore(t, "AAA")?.score === 10);
+    check("B- 는 이하 칸이라 6점", creditScore(t, "B-")?.score === 6, String(creditScore(t, "B-")?.score));
+    check("등급 순서가 좋은 쪽부터", gradeRank("AAA") < gradeRank("BBB0") && gradeRank("BBB0") < gradeRank("BB0"));
+    // 실적 등급 문장에 등급 구간이 잘못 잡히면 경영상태 점수가 지어내집니다.
+    check("실적 등급 문장에는 안 걸린다",
+      parseCreditTiers("최근 3년간 1억원 이상 3건 이상 20점, 2건 이상 15점").length === 0);
+    check("ISO9001 같은 말에 안 걸린다", parseCreditTiers("ISO9001 보유 시 5점").length === 0,
+      JSON.stringify(parseCreditTiers("ISO9001 보유 시 5점")));
+  }
+
   // 건수 등급이 있는 심사표로 끝까지
   const grid = [
     ["평가항목", "배점", "세부 배점기준"],
@@ -425,6 +452,36 @@ function buildZip(files) {
   check("실적 항목의 건수 등급이 붙는다", item?.countTiers?.length === 3, JSON.stringify(item?.countTiers));
   check("금액 문턱도 같이 읽는다", item?.countAmount === 1e8, String(item?.countAmount));
   check("기간도 같이 읽는다", item?.years === 3, String(item?.years));
+
+  /* 경영상태·참여인력 채점 — 2026-08 에 채점 대상으로 들어왔습니다.
+     경영은 신용등급을 공고의 구간표에 맞추고, 인력은 회사 방침으로 만점입니다. */
+  {
+    const grid = [
+      ["평가항목", "배점", "세부 배점기준"],
+      ["경영상태", "10", "신용평가등급 A0 이상 10점, BBB-, BB+, BB0, BB- 구간 8점"],
+      ["참여인력 및 조직", "15", "투입인력의 전문성"],
+      ["과업제안내용", "75", ""],
+    ];
+    const t = extractRequirements("", [{ grid }]).scoreTable;
+    const co = { region: "서울특별시", credit: "BB0", maxRecord: 8e8, certs: [], directProduce: [] };
+    const s2 = selfScore({ scoreTable: t, credits: [], region: null, directItems: null }, co, 1e8, r);
+    const get = (k) => s2.items.find((i) => i.kind === k);
+    check("경영상태를 신용등급으로 채점한다", get("경영")?.got === 8, JSON.stringify(get("경영")));
+    check("근거에 우리 등급이 적힌다", /BB0/.test(get("경영")?.why ?? ""), get("경영")?.why);
+    check("참여인력은 만점", get("인력")?.got === 15, JSON.stringify(get("인력")));
+    check("인력 근거에 방침이라고 밝힌다", /방침/.test(get("인력")?.why ?? ""), get("인력")?.why);
+    check("정성은 여전히 뺀다", s2.max === 25 && s2.unknown === 0, `max=${s2.max} unknown=${s2.unknown}`);
+    // 신용등급이 없으면 지어내지 않아야 합니다.
+    const s3 = selfScore({ scoreTable: t, credits: [], region: null, directItems: null },
+                         { ...co, credit: "" }, 1e8, r);
+    check("신용등급이 없으면 경영은 미확인", !s3.items.some((i) => i.kind === "경영") && s3.unknown === 10,
+          `unknown=${s3.unknown}`);
+    // 구간표를 못 읽었으면 등급만으로 점수를 지어내면 안 됩니다.
+    const t2 = extractRequirements("", [{ grid: [["평가항목", "배점", "세부"], ["경영상태", "10", "재무제표 평가"], ["과업제안내용", "90", ""]] }]).scoreTable;
+    const s4 = selfScore({ scoreTable: t2, credits: [], region: null, directItems: null }, co, 1e8, r);
+    check("구간표를 못 읽으면 경영은 미확인", s4 === null || !s4.items?.some((i) => i.kind === "경영"),
+          JSON.stringify(s4?.items ?? null));
+  }
 
   const company = { region: "서울특별시", maxRecord: r.maxRecord, certs: [], directProduce: [] };
   const s = selfScore({ scoreTable: req.scoreTable, credits: [], region: null, directItems: null }, company, 3e8, r);
@@ -569,6 +626,11 @@ function buildZip(files) {
   check("메뉴와 화면의 이름이 맞다", /titles=\{[^}]*prop:/.test(html));
   check("점수 배지를 누르면 갈 수 있다", /data-prop=/.test(html) && /window\.showView/.test(html));
   check("데이터 마커가 살아 있다", html.includes("<!--G2B_DATA_START-->") && html.includes("<!--G2B_DATA_END-->"));
+  check("채점 근거 열 이름이 점수 예측 평가", html.includes("<th>점수 예측 평가</th>"));
+  check("공고문 원문 배점표는 뺐다", !/function rawBlock/.test(html) && !/rawtab/.test(html));
+  check("분모 설명문은 뺐다", !html.includes("분모가 ${s.max}점인 이유"));
+  check("개요·강점약점·전략·발주처가 붙어 있다",
+    ["briefBlock","swBlock","strategyBlock","orgBlock"].every((f)=>html.includes(`function ${f}(`)));
   check("제안서 분석은 참가 불가를 뺀다",
     /PROP_ITEMS\.filter\(it=>it\.score && !it\.score\.blocked\)/.test(html));
 }

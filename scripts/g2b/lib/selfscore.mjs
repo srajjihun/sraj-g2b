@@ -10,16 +10,19 @@
 //   채점 안 함 정성평가(사업이해도·제안내용) — 제안서를 써봐야 아는 것이고,
 //              어차피 공고끼리 차이가 없어 넣으면 변별력만 사라집니다
 //   채점 안 함 가격평가 — 우리가 얼마를 쓰느냐에 달린 것이라 공고 비교값이 아닙니다
-//   채점 못 함 경영상태·인력 — 신용등급과 인력 명단이 회사정보에 없습니다.
-//              모르는 것을 아는 척하지 않고 "미확인"으로 따로 셉니다.
+//   채점함   경영상태 — 회사정보의 신용등급을 공고의 등급별 배점 구간에 맞춥니다.
+//   채점함   참여인력 — 만점으로 봅니다. 제안서를 쓸 때 요구 조건에 맞는 인력을
+//              편성해 넣는 것이 우리가 통제할 수 있는 일이라, 회사 방침으로
+//              그렇게 정했습니다(2026-08). 근거 문구에 방침이라고 밝혀 둡니다 —
+//              공고문에서 읽어낸 사실과 우리가 정한 가정은 구분되어야 합니다.
 //
 // 그래서 나오는 값은 "총점 예상"이 아니라 "정량 항목 득점률"입니다.
 // 총점처럼 보이게 만들 수도 있었지만, 그러면 정성 배점이 큰 공고일수록
 // 점수가 다 비슷해져서 무엇을 먼저 볼지 가려낼 수 없습니다.
-import { itemKey } from "./require.mjs";
+import { itemKey, creditScore } from "./require.mjs";
 
 /** 우리가 지금 채점할 수 있는 항목들 */
-const SCORABLE = new Set(["실적", "신인도", "지역"]);
+const SCORABLE = new Set(["실적", "신인도", "지역", "경영", "인력"]);
 /** 채점 대상에서 아예 빼는 항목들 (위 설명 참고) */
 const EXCLUDED = new Set(["정성", "가격"]);
 
@@ -99,6 +102,35 @@ function scoreCredit(item, company, credits) {
   };
 }
 
+/**
+ * 경영상태 항목 채점.
+ *
+ * 공고마다 등급별 배점 구간이 다릅니다("A0 이상 10점, BBB 구간 8점"). 구간표를
+ * 읽어냈으면 우리 등급이 어느 칸에 드는지 맞춥니다. 구간표를 못 읽었으면
+ * 채점하지 않습니다 — 등급만 알고 배점표를 모르면 점수를 지어내는 셈입니다.
+ */
+function scoreManage(item, company) {
+  const grade = company?.credit;
+  if (!grade) return { got: null, why: "우리 신용등급 미입력" };
+  if (!item.creditTiers?.length) return { got: null, why: `${grade} 보유 · 이 공고의 등급별 배점 구간을 못 읽음` };
+  const hit = creditScore(item.creditTiers, grade);
+  if (!hit) return { got: null, why: `${grade} 이 구간표 어디에도 안 들어감` };
+  const got = Math.min(hit.score, item.score);
+  return { got, why: `${grade} → ${hit.tier.grades.join("·")} 칸 ${got}점` };
+}
+
+/**
+ * 참여인력 항목 채점 — 만점으로 봅니다.
+ *
+ * 실적이나 인증과 달리 인력은 제안서를 쓸 때 요구 조건에 맞춰 편성해 넣을 수
+ * 있습니다. 우리가 통제할 수 있는 항목이라 만점을 전제로 두기로 했습니다(회사 방침).
+ * 다만 이것은 공고문에서 읽어낸 사실이 아니라 우리가 정한 가정이므로, 근거
+ * 문구에 그렇게 적어 둡니다. 사실과 가정이 같은 얼굴을 하면 안 됩니다.
+ */
+function scorePeople(item) {
+  return { got: item.score, why: `요구 조건에 맞춰 인력을 편성한다는 전제로 만점 (회사 방침)` };
+}
+
 /** 지역 항목 채점. 어느 지역을 요구하는지 읽힌 공고만 채점합니다. */
 function scoreRegion(item, company, region) {
   if (!region?.value || !company?.region) return { got: null, why: "요구 지역 또는 우리 소재지 미상" };
@@ -159,6 +191,8 @@ export function selfScore(doc, company, budget, records) {
     const r =
       it.kind === "실적" ? scoreRecord(it, company, budget, records)
       : it.kind === "신인도" ? scoreCredit(it, company, doc.credits)
+      : it.kind === "경영" ? scoreManage(it, company)
+      : it.kind === "인력" ? scorePeople(it)
       : scoreRegion(it, company, doc.region);
 
     if (r.got === null) { unknown += it.score; unknownKinds.add(it.kind); continue; }

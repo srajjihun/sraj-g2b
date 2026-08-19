@@ -301,6 +301,8 @@ function findScoreTable(tables) {
           return {
             name, score, kind: kindOf(name, detail), tiers,
             countTiers: parseCountTiers(detail),
+            // 경영상태 항목의 등급별 배점 구간 ("A0 이상 10점, BBB 구간 8점")
+            creditTiers: parseCreditTiers(detail),
             // 건수 등급에 "1억 이상 3건" 처럼 금액 문턱이 같이 붙는 경우
             countAmount: tiers.length ? null : parseWon(detail),
             years: parseYears(detail),
@@ -385,6 +387,80 @@ const ITEM_TOPICS = new Set([
 /* 같은 품목을 "국제행사기획및대행서비스" 로도, "국제행사기획대행서비스" 로도
    씁니다. 그대로 두면 보유 품목인데 "없음"으로 잡힙니다(실측 2건·1건).
    비교할 때는 "및"과 띄어쓰기를 지운 형태를 씁니다. */
+/* ───────── 신용평가등급 구간 읽기 ─────────
+   경영상태 항목은 대개 "신용평가등급 A0 이상 10점, BBB 구간 8점" 처럼
+   등급별 배점 구간으로 적혀 있습니다. 우리 등급이 어느 칸에 드는지 맞추려면
+   등급의 순서를 알아야 합니다. 좋은 것부터 나쁜 것 순으로 늘어놓습니다. */
+const GRADES = [
+  "AAA", "AA+", "AA0", "AA-", "A+", "A0", "A-",
+  "BBB+", "BBB0", "BBB-", "BB+", "BB0", "BB-",
+  "B+", "B0", "B-", "CCC+", "CCC0", "CCC-", "CC", "C", "D",
+];
+const GRADE_RANK = new Map(GRADES.map((g, i) => [g, i])); // 작을수록 좋은 등급
+/* 단어 경계(\b)를 쓰면 "BB-" 의 꼬리표가 떨어져 "BB" 로 읽힙니다 — 부호가
+   등급을 가르는 값인데 그것이 사라지면 판정이 통째로 어긋납니다.
+   앞뒤로 글자가 붙지 않았는지만 봅니다(ISO9001·CCTV 같은 말에 걸리지 않게). */
+const GRADE_RE = /(?<![A-Za-z0-9])(AAA|AA[+0−\-]?|A[+0−\-]?|BBB[+0−\-]?|BB[+0−\-]?|B[+0−\-]?|CCC[+0−\-]?|CC|C|D)(?![A-Za-z])/g;
+
+/** "BBB−" 처럼 유니코드 빼기표를 쓰는 문서가 있어 맞춰 줍니다. */
+const normGrade = (g) => String(g ?? "").toUpperCase().replace(/[−–—]/g, "-").replace(/\s+/g, "");
+
+/** 등급 문자열의 순위. 등급대만 적힌 경우("BBB")는 그 대의 가운데(0)로 봅니다. */
+export function gradeRank(g) {
+  const n = normGrade(g);
+  if (GRADE_RANK.has(n)) return GRADE_RANK.get(n);
+  if (GRADE_RANK.has(n + "0")) return GRADE_RANK.get(n + "0");
+  return null;
+}
+
+/**
+ * 경영상태 배점 구간을 읽습니다.
+ * "A0 이상 10점, BBB 구간 8점, BB 이하 6점" → [{grades, min, max, score, atLeast}]
+ * 우리 등급이 어느 칸에 드는지 판정하는 데 씁니다.
+ */
+export function parseCreditTiers(text) {
+  const out = [];
+  const src = String(text ?? "");
+  /* 쉼표로 끊으면 "BBB-, BB+, BB0, BB- 구간 8점" 이 조각나 등급 목록이 흩어집니다.
+     대신 "N점" 이 나올 때마다 끊습니다 — 그 앞의 글이 그 점수에 해당하는 등급들입니다. */
+  const SCORE_RE = /([\d.]+)\s*점/g;
+  let at = 0;
+  for (const m of src.matchAll(SCORE_RE)) {
+    const head = src.slice(at, m.index);
+    at = m.index + m[0].length;
+    const score = Number(m[1]);
+    if (!Number.isFinite(score)) continue;
+    const chunk = head;
+    const grades = [...chunk.matchAll(GRADE_RE)].map((g) => normGrade(g[1]))
+      .filter((g) => gradeRank(g) !== null);
+    if (!grades.length) continue;
+    const ranks = grades.map(gradeRank);
+    out.push({
+      grades,
+      score,
+      // "이상" 이면 문턱, "이하" 면 반대쪽 문턱, 그 외에는 적힌 등급들만 인정합니다.
+      atLeast: /이상|초과/.test(chunk),
+      atMost: /이하|미만/.test(chunk),
+      min: Math.min(...ranks),
+      max: Math.max(...ranks),
+    });
+  }
+  return out;
+}
+
+/** 우리 등급이 어느 칸에 드는지. 못 찾으면 null. */
+export function creditScore(tiers, grade) {
+  const r = gradeRank(grade);
+  if (r === null || !tiers?.length) return null;
+  // 점수가 높은 칸부터 봅니다 — 여러 칸에 걸리면 유리한 쪽이 맞습니다.
+  for (const t of [...tiers].sort((a, b) => b.score - a.score)) {
+    if (t.atLeast ? r <= t.max : t.atMost ? r >= t.min : r >= t.min && r <= t.max) {
+      return { score: t.score, tier: t };
+    }
+  }
+  return null;
+}
+
 export const itemKey = (s) => String(s ?? "").replace(/[\s및]/g, "");
 
 export function itemNames(line) {

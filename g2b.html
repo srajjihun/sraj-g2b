@@ -482,11 +482,27 @@ svg{display:block; width:100%}
 .pnote{font-size:13.5px; color:var(--ink-3); line-height:1.7; margin-top:10px}
 .pnote b{color:var(--ink-2); font-weight:700}
 
-/* 공고문 원문 표 — 우리가 무엇을 보고 판단했는지 그대로 보여줍니다. */
-.rawtab{width:100%; border-collapse:collapse; font-size:13px; margin-top:4px}
-.rawtab td{border:1px solid var(--line); padding:5px 8px; color:var(--ink-2); vertical-align:top}
-.rawtab tr:first-child td{background:var(--surface-2); font-weight:800; color:var(--ink-3)}
-.rawscroll{overflow-x:auto; max-height:340px; overflow-y:auto}
+.rawscroll{overflow-x:auto; max-height:420px; overflow-y:auto}
+
+/* 개요 · 강점약점 · 전략 — 한 줄에 이름과 값 */
+.kv{width:100%; border-collapse:collapse; font-size:14.5px}
+.kv th{text-align:left; width:118px; padding:7px 10px 7px 0; color:var(--ink-3); font-size:13px;
+  font-weight:800; vertical-align:top; white-space:nowrap; border-bottom:1px solid var(--line-soft)}
+.kv td{padding:7px 0; border-bottom:1px solid var(--line-soft); color:var(--ink-2); line-height:1.6}
+.kv td b{color:var(--ink); font-weight:700}
+.kv tr:last-child th,.kv tr:last-child td{border-bottom:0}
+
+.swlist{display:grid; grid-template-columns:1fr 1fr; gap:11px}
+.swbox{border:1px solid var(--line); border-radius:9px; padding:11px 13px; background:var(--surface-2)}
+.swbox.good{border-color:var(--go-line,#A7E3C0); background:var(--go-bg)}
+.swbox.bad{border-color:var(--warn-line); background:var(--warn-bg)}
+.swbox h4{font-size:13px; font-weight:800; margin-bottom:7px; color:var(--ink-2); letter-spacing:.02em}
+.swbox ul{list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:6px}
+.swbox li{font-size:14px; line-height:1.55; padding-left:13px; position:relative; color:var(--ink-2)}
+.swbox li::before{content:"·"; position:absolute; left:2px; font-weight:800; color:var(--ink-4)}
+.swbox li b{color:var(--ink); font-weight:700}
+.swbox .none{color:var(--ink-4); font-size:13.5px}
+@media (max-width:900px){ .swlist{grid-template-columns:1fr} }
 
 /* 외부 분석 검토 */
 .audit{display:flex; flex-direction:column; gap:9px; margin-top:4px}
@@ -1894,11 +1910,12 @@ cardView("view-urg", URG_POSTS, "bid", "#nav-n-urg", "due");
    답하려면 심사표 한 줄 한 줄과 그 옆의 판정 근거가 같이 보여야 합니다.
 
    보여주는 것:
-     ① 우리가 채점한 항목 — 배점 · 득점 · 무엇을 보고 그렇게 줬는지
-     ② 채점하지 않은 항목 — 왜 안 했는지 (뺀 것 / 못 한 것을 구분)
-     ③ 참가 자격 판정 — 항목별 판정과 공고문 근거 문장
-     ④ 공고문에서 읽어낸 원문 배점표 그대로
-     ⑤ 외부에서 만든 분석 문서가 있으면 함께, 우리 데이터와 대조한 결과와 같이 */
+     ① 공고 개요 — 금액·일정·투찰방식·공동수급·자격요건을 한 자리에
+     ② 심사표 항목별 채점 — 배점 · 득점 · 점수 예측 평가
+     ③ 강점과 약점 — 채점 결과에서 규칙으로 뽑습니다 (지어낸 말이 아닙니다)
+     ④ 수주 전략 포인트 — 배점이 큰 항목과 우리가 못 채운 항목
+     ⑤ 참가 자격 판정 · 이 공고가 쳐 주는 인증
+     ⑥ 외부에서 만든 분석 문서가 있으면 함께, 우리 데이터와 대조한 결과와 같이 */
 (function(){
   const pick = $("#prop-pick");
   const body = $("#prop-body");
@@ -2004,17 +2021,8 @@ cardView("view-urg", URG_POSTS, "bid", "#nav-n-urg", "due");
     return `<div class="panel"><h2>심사표 항목별 채점<span class="soft">공고문에서 읽어낸 배점표 그대로</span>
       <span class="cnt">정량 ${s.max}점 중 ${s.got}점</span></h2>
       <div class="rawscroll"><table class="ptab"><thead><tr>
-        <th>평가 항목</th><th>배점</th><th>우리 득점</th><th>무엇을 보고 그렇게 줬나</th>
+        <th>평가 항목</th><th>배점</th><th>우리 득점</th><th>점수 예측 평가</th>
       </tr></thead><tbody>${rows}</tbody></table></div>
-      <div class="pnote">
-        <b>정성을 왜 빼나</b> — 제안서를 써봐야 아는 항목이라 지금은 셀 수가 없고, 어차피 공고끼리
-        차이가 없어 넣으면 변별력만 사라집니다. <b>가격을 왜 빼나</b> — 우리가 얼마를 쓰느냐에 달린
-        값이라 공고끼리 비교하는 값이 못 됩니다.<br><br>
-        <b>분모가 ${s.max}점인 이유</b> — 위 표에서 채점 대상인 항목(실적·신인도·지역)의 배점만 더한 값입니다.
-        표 전체 합계 ${raw.total}점이 아닙니다. 정성·가격은 아예 빼고, 근거가 없어 못 채점한
-        ${s.unknown}점${s.unknownKinds?.length?`(${esc(s.unknownKinds.join("·"))})`:""}도 분모에서 뺐습니다.
-        모르는 항목을 0점으로 넣으면 우리 점수가 실제보다 낮게 나오고, 만점으로 넣으면 높게 나옵니다 —
-        둘 다 거짓말이라 아예 세지 않습니다.
       </div></div>`;
   }
 
@@ -2037,6 +2045,116 @@ cardView("view-urg", URG_POSTS, "bid", "#nav-n-urg", "due");
         <b>공고문-분석.bat</b> 을 돌리면 됩니다.
         ${(s.why||[]).length ? `<br><br>계산 내역 — ${esc((s.why||[]).join(" · "))}` : ""}
       </div></div>`;
+  }
+
+  /* ── 공고 개요 ──
+     제안서를 쓰기 전에 한 번은 확인해야 하는 것들을 한 자리에 모읍니다.
+     흩어져 있으면 공동수급 불허 같은 것을 놓칩니다. */
+  function briefBlock(it){
+    const d = it.doc, due = dueOf(it), left = daysUntil(due.iso);
+    const row = (k,v) => v ? `<tr><th>${k}</th><td>${v}</td></tr>` : "";
+    const joint = it.jointOk === false ? `<b>불가</b> — 단독으로 들어가야 합니다`
+      : it.jointOk ? `가능${it.jointMethod?` · ${esc(it.jointMethod)}`:""}${it.jointRgnLmt?` · 구성원 지역제한 있음`:""}`
+      : "";
+    const 자격 = [
+      d?.region ? `지역 <b>${esc(d.region.value)}</b>` : (it.rgnLmt ? "지역제한 있음 (공고문 미확인)" : ""),
+      d?.industry?.length ? `업종 ${d.industry.map(x=>esc(x.value)).join(" · ")}` : (it.indstrytyLmt ? "업종제한 있음 (공고문 미확인)" : ""),
+      d?.record ? `실적 ${억(d.record.amount)} 이상${d.record.years?` · 최근 ${d.record.years}년`:""}` : (it.arsltCmpt ? "실적경쟁" : ""),
+      d?.directItems?.length ? `직접생산확인 ${d.directItems.map(x=>esc(x.name)).join(" · ")}` : "",
+    ].filter(Boolean).join(`<span class="dot"> · </span>`);
+    const 배점 = d?.scoreTable
+      ? `${d.scoreTable.items.length}개 항목 · 합계 ${d.scoreTable.total}점`
+        + (d?.rate ? ` <span style="color:var(--ink-3)">(기술 ${d.rate.tech} : 가격 ${d.rate.price})</span>` : "")
+      : (d?.rate ? `기술 ${d.rate.tech} : 가격 ${d.rate.price}`
+        : (it.techRate!=null ? `기술 ${it.techRate} : 가격 ${it.priceRate ?? 100-it.techRate}` : ""));
+    return `<div class="panel"><h2>공고 개요<span class="soft">제안서를 쓰기 전에 확인할 것</span></h2>
+      <table class="kv"><tbody>
+        ${row("공고기관", esc(it.org||""))}
+        ${row("과업금액", `<b>${억(it.budget ?? it.price)}</b>${it.price&&it.budget&&it.price!==it.budget?` <span style="color:var(--ink-3)">(추정가격 ${억(it.price)})</span>`:""}`)}
+        ${row(due.src==="개찰"?"개찰":"입찰마감", due.iso ? `<b>${esc(due.iso)}</b>${due.time?` ${esc(due.time)}`:""}${left!==null?` · ${left===0?"오늘":`D-${left}`}`:""}` : "")}
+        ${row("자격등록 마감", it.qlfctDate ? `${esc(it.qlfctDate)}${it.qlfctTime?` ${esc(it.qlfctTime)}`:""} <span style="color:var(--ink-3)">— 이 마감을 놓치면 입찰 자체가 안 됩니다</span>` : "")}
+        ${row("투찰방식", [it.method, it.winnerMethod].filter(Boolean).map(esc).join(" · "))}
+        ${row("공동수급", joint)}
+        ${row("자격요건", 자격)}
+        ${row("배점 구성", 배점)}
+        ${row("공고번호", it.bidNo ? `<span class="num">${esc(it.bidNo)}</span>` : "")}
+        ${row("읽은 공고문", d?.source ? esc(d.source) : "")}
+      </tbody></table></div>`;
+  }
+
+  /* ── 강점과 약점 ──
+     지어내지 않습니다. 채점 결과에서 규칙으로 뽑습니다 —
+     만점 받은 항목이 강점, 못 채운 항목이 약점입니다. */
+  function swBlock(it){
+    const s = it.self;
+    if(!s || s.mode!=="심사표") return "";
+    const 강점 = [], 약점 = [];
+    for(const i of s.items){
+      if(i.got >= i.score) 강점.push(`<b>${esc(i.name)} ${i.got}/${i.score}</b> — ${esc(i.why)}`);
+      else if(i.got > 0)   약점.push(`<b>${esc(i.name)} ${i.got}/${i.score}</b> — ${esc(i.why)} <span style="color:var(--ink-3)">(${Math.round((i.score-i.got)*10)/10}점 손실)</span>`);
+      else                 약점.push(`<b>${esc(i.name)} 0/${i.score}</b> — ${esc(i.why)}`);
+    }
+    if(s.unknown) 약점.push(`<b>채점 못한 정량 ${s.unknown}점</b> — ${esc((s.unknownKinds||[]).join("·"))} 근거가 없습니다`);
+    const el = it.doc?.eligibility;
+    if(el?.verdict === "가능") 강점.push(`<b>참가 자격</b> — 공고문 기준으로 걸리는 조건이 없습니다`);
+    if(el) for(const c of el.checks) if(c.verdict === "확인필요")
+      약점.push(`<b>${esc(c.key)} 확인 필요</b> — ${esc(c.detail)}`);
+    if(it.jointOk === false) 약점.push(`<b>공동수급 불가</b> — 부족한 부분을 컨소시엄으로 메울 수 없습니다`);
+    const box = (cls,title,rows) => `<div class="swbox ${cls}"><h4>${title}</h4>`
+      + (rows.length ? `<ul>${rows.map(r=>`<li>${r}</li>`).join("")}</ul>` : `<div class="none">해당 없음</div>`)
+      + `</div>`;
+    return `<div class="panel"><h2>강점과 약점<span class="soft">채점 결과에서 규칙으로 뽑습니다</span></h2>
+      <div class="swlist">${box("good","강점",강점)}${box("bad","약점",약점)}</div></div>`;
+  }
+
+  /* ── 수주 전략 포인트 ──
+     배점이 큰 항목이 승부처입니다. 우리가 채점할 수 없는 정성 항목이
+     대개 여기에 몰려 있는데, 그래서 더 중요합니다 — 점수로는 안 보이지만
+     실제로 당락을 가르는 곳입니다. */
+  function strategyBlock(it){
+    const raw = it.doc?.scoreTable;
+    if(!raw?.items?.length) return "";
+    const top = [...raw.items].sort((a,b)=>b.score-a.score).slice(0,4);
+    const scored = new Map((it.self?.items ?? []).map(i=>[i.name+"|"+i.score, i]));
+    const rows = top.map(i=>{
+      const hit = scored.get(i.name+"|"+i.score);
+      const 상태 = hit ? (hit.got>=i.score ? `우리 <b>${hit.got}/${i.score}</b> — 이미 만점입니다`
+                        : `우리 <b>${hit.got}/${i.score}</b> — <b>${Math.round((i.score-hit.got)*10)/10}점</b>을 더 받을 수 있습니다`)
+        : ["정성","가격"].includes(i.kind) ? `제안서로 승부하는 항목입니다 — 점수에는 안 잡히지만 여기서 갈립니다`
+        : `근거가 없어 채점 못했습니다 — 확인하면 점수가 바뀝니다`;
+      return `<tr><th>${esc(i.name)}</th><td><b>${i.score}점</b> <span class="kd${hit?" on":""}">${esc(i.kind)}</span> · ${상태}</td></tr>`;
+    }).join("");
+    const 정성 = raw.items.filter(i=>i.kind==="정성").reduce((a,i)=>a+i.score,0);
+    const 정량 = raw.total - 정성 - raw.items.filter(i=>i.kind==="가격").reduce((a,i)=>a+i.score,0);
+    const 가격 = raw.items.filter(i=>i.kind==="가격").reduce((a,i)=>a+i.score,0);
+    return `<div class="panel"><h2>수주 전략 포인트<span class="soft">배점이 큰 항목부터</span>
+      <span class="cnt">정성 ${정성} · 정량 ${정량} · 가격 ${가격}</span></h2>
+      <table class="kv"><tbody>${rows}</tbody></table>
+      <div class="pnote">정성 ${정성}점이 제안서로 갈리는 몫입니다.
+        ${정성 >= 50 ? "절반이 넘습니다 — 실적이 조금 모자라도 제안서로 뒤집을 수 있는 판입니다."
+        : 가격 >= 30 ? "가격 비중이 큽니다 — 투찰가를 먼저 정하고 들어가야 합니다."
+        : "정량 비중이 큽니다 — 실적·인증 요건을 먼저 맞추는 쪽이 빠릅니다."}</div></div>`;
+  }
+
+  /* ── 발주처 ──
+     이 기관이 어떻게 발주하는지, 작년에 누가 가져갔는지.
+     기관 프로파일 화면과 같은 데이터를 이 공고 관점에서 다시 봅니다. */
+  function orgBlock(it){
+    const same = PROP_ITEMS.filter(x=>x.org===it.org);
+    const L = it.last;
+    const 합 = same.reduce((a,x)=>a+((x.budget ?? x.price) ?? 0),0);
+    const row = (k,v) => v ? `<tr><th>${k}</th><td>${v}</td></tr>` : "";
+    return `<div class="panel"><h2>발주처<span class="soft">${esc(it.org||"")}</span></h2>
+      <table class="kv"><tbody>
+        ${row("지금 살아 있는 공고", same.length>1 ? `<b>${same.length}건</b> · 합계 ${억(합)}` : "이 건 하나뿐입니다")}
+        ${row("작년 같은 사업", L ? (L.corp
+            ? `<b>${esc(L.corp)}</b>가 ${억(L.amount)}에 수주${L.rate?` · 낙찰률 ${L.rate}%`:""}${L.bidders?` · ${L.bidders}곳 투찰`:""}`
+            : `기록은 있으나 수행업체가 확인되지 않습니다 (유찰이거나 미등재)`)
+          : `작년 낙찰 기록이 없습니다 — 신규 사업이거나 아직 수집되지 않았습니다`)}
+      </tbody></table>
+      ${L?.bidders ? `<div class="pnote">작년에 ${L.bidders}곳이 붙었습니다.
+        ${L.bidders<=3 ? "경쟁이 얕은 편입니다." : L.bidders>=10 ? "경쟁이 셌습니다 — 가격을 각오해야 합니다." : "보통 수준의 경쟁입니다."}</div>` : ""}
+      </div>`;
   }
 
   function eligBlock(it){
@@ -2067,17 +2185,6 @@ cardView("view-urg", URG_POSTS, "bid", "#nav-n-urg", "due");
       <span class="cnt">${cs.length}개 중 ${n}개 보유</span></h2>
       <table class="ptab"><thead><tr><th>인증</th><th>보유</th><th>공고문 근거</th></tr></thead>
       <tbody>${rows}</tbody></table></div>`;
-  }
-
-  function rawBlock(it){
-    const raw = it.doc?.scoreTable;
-    if(!raw?.rows?.length) return "";
-    const tb = raw.rows.map(r=>`<tr>${r.map(c=>`<td>${esc(c)}</td>`).join("")}</tr>`).join("");
-    return `<div class="panel"><h2>공고문 원문 배점표<span class="soft">우리가 읽어낸 그대로 · 배점 열 "${esc(raw.column||"")}"</span>
-      <span class="cnt">합계 ${raw.total}</span></h2>
-      <div class="rawscroll"><table class="rawtab"><tbody>${tb}</tbody></table></div>
-      <div class="pnote">위 표를 잘못 읽었으면 점수도 틀립니다. 이상하면
-        <b>${esc(it.doc?.source||"공고문")}</b> 원본을 열어 대조해 주세요.</div></div>`;
   }
 
   /* ── 외부 분석 문서 ── */
@@ -2135,11 +2242,14 @@ cardView("view-urg", URG_POSTS, "bid", "#nav-n-urg", "due");
           it.bidNo?`공고 ${esc(it.bidNo)}`:""].filter(Boolean).join(`<span class="dot">·</span>`)}</div>
         <div class="pscore ${cls}">${head}</div>
       </div>
+      ${briefBlock(it)}
       ${scoreTableBlock(it)}
       ${estBlock(it)}
+      ${swBlock(it)}
+      ${strategyBlock(it)}
       ${eligBlock(it)}
       ${creditBlock(it)}
-      ${rawBlock(it)}
+      ${orgBlock(it)}
       ${auditBlock(d)}
       ${(!it.doc)?`<div class="panel"><h2>공고문을 아직 안 읽었습니다</h2>
         <div class="pnote">첨부 공고문을 읽으면 참가 자격과 심사표가 확정되고, 이 화면이
