@@ -133,8 +133,13 @@ function findRecord(ls) {
 function findRateLine(ls) {
   for (let i = 0; i < ls.length; i += 1) {
     const win = [ls[i], ls[i + 1] ?? ""].join(" ");
-    const t = /기술(?:능력)?평가\s*([\d.]+)\s*점/.exec(win);
-    const p = /(?:입찰)?가격평가\s*([\d.]+)\s*점/.exec(win);
+    /* "점" 은 있을 때도 없을 때도 있습니다.
+         기술능력평가 80점 : 입찰가격평가 20점
+         기술능력평가 80 : 입찰가격평가 20      ← 이쪽이 더 흔합니다
+       예전에는 "점" 을 요구해서 뒤쪽 형태를 통째로 놓쳤습니다. 두 값의 합이
+       100 이어야 한다는 조건이 아래에 있어, 느슨하게 잡아도 엉뚱한 숫자는 걸러집니다. */
+    const t = /기술(?:능력)?평가\s*[(（]?\s*([\d.]+)\s*[)）]?\s*점?/.exec(win);
+    const p = /(?:입찰)?가격평가\s*[(（]?\s*([\d.]+)\s*[)）]?\s*점?/.exec(win);
     if (!t || !p) continue;
     const tech = Number(t[1]);
     const price = Number(p[1]);

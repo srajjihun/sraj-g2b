@@ -569,6 +569,79 @@ function buildZip(files) {
   check("메뉴와 화면의 이름이 맞다", /titles=\{[^}]*prop:/.test(html));
   check("점수 배지를 누르면 갈 수 있다", /data-prop=/.test(html) && /window\.showView/.test(html));
   check("데이터 마커가 살아 있다", html.includes("<!--G2B_DATA_START-->") && html.includes("<!--G2B_DATA_END-->"));
+  check("제안서 분석은 참가 불가를 뺀다",
+    /PROP_ITEMS\.filter\(it=>it\.score && !it\.score\.blocked\)/.test(html));
+}
+
+/* ⑫ 첨부 여러 개에서 조각을 모으는가.
+      참가자격은 입찰공고문에, 심사표는 제안요청서에 나뉘어 있는 것이 흔합니다.
+      예전에는 "가장 많이 알아낸 파일 하나"를 골라 나머지를 버려서,
+      제안요청서에만 있던 심사표가 통째로 사라졌습니다. */
+{
+  const { analyze, rankFiles } = await import("./docs.mjs");
+
+  check("제안요청서를 입찰공고문보다 먼저 본다",
+    rankFiles([{ name: "3.산출내역서.hwp" }, { name: "1.입찰공고문.hwp" }, { name: "2.제안요청서.hwp" }])
+      .map((f) => f.name)[0] === "2.제안요청서.hwp",
+    rankFiles([{ name: "3.산출내역서.hwp" }, { name: "1.입찰공고문.hwp" }, { name: "2.제안요청서.hwp" }]).map((f) => f.name).join(" > "));
+
+  // 입찰공고문 — 지역 제한과 배점 비율만. 심사표는 없습니다.
+  const 공고문 = [
+    "1. 입찰참가자격",
+    "  가. 본점 소재지를 서울특별시에 둔 업체로 제한한다",
+    "2. 낙찰자 결정: 협상에 의한 계약, 기술능력평가 80 : 입찰가격평가 20",
+  ].join("\n");
+  // 제안요청서 — 심사표가 여기 있습니다.
+  const 제안요청서표 = [
+    ["평가부문", "배점", "세부기준"],
+    ["유사용역 수행실적", "20", "최근 3년간 1억원 이상 3건 이상 20점, 2건 이상 15점, 1건 이상 10점"],
+    ["사업이해도 및 제안내용", "60", ""],
+    ["신인도", "5", "벤처기업, 기업부설연구소 보유 시 가점"],
+    ["입찰가격", "15", ""],
+  ];
+
+  const files = [{ name: "붙임3_산출내역서.hwp", url: "u3" },
+                 { name: "붙임1_입찰공고문.hwp", url: "u1" },
+                 { name: "붙임2_제안요청서.hwp", url: "u2" }];
+  const fake = {
+    download: async (u) => Buffer.from(u),
+    readDocument: async (buf) => {
+      const u = buf.toString();
+      if (u === "u1") return { ok: true, kind: "hwp", note: "", text: 공고문, tables: [] };
+      if (u === "u2") return { ok: true, kind: "hwp", note: "", text: "제안서 평가 기준", tables: [{ grid: 제안요청서표 }] };
+      return { ok: true, kind: "hwp", note: "", text: "산출내역 총계 금액", tables: [] };
+    },
+  };
+  const r = await analyze({ files }, "/tmp", fake);
+
+  check("두 파일에서 각각 가져온다", !!r.region && !!r.scoreTable,
+        `지역=${r.region?.value} 심사표=${r.scoreTable?.items?.length}항목`);
+  check("지역은 입찰공고문에서", r.sources?.region === "붙임1_입찰공고문.hwp", r.sources?.region);
+  check("심사표는 제안요청서에서", r.sources?.scoreTable === "붙임2_제안요청서.hwp", r.sources?.scoreTable);
+  check("대표 출처는 심사표를 준 파일", r.source === "붙임2_제안요청서.hwp", r.source);
+  check("배점 비율도 같이 남는다 (점 없는 표기)", r.rate?.tech === 80 && r.rate?.price === 20, JSON.stringify(r.rate));
+  {
+    const { extractRequirements } = await import("./lib/require.mjs");
+    const rate = (t) => extractRequirements(t, [])?.rate;
+    check("점이 붙은 표기도 그대로", rate("기술능력평가 80점 : 입찰가격평가 20점")?.tech === 80);
+    check("괄호 표기도 읽는다", rate("기술능력평가(90) 및 입찰가격평가(10)")?.tech === 90);
+    check("합이 100이 아니면 배점 문장이 아니다", rate("기술능력평가 80 : 입찰가격평가 50") === null);
+  }
+  check("심사표 합계가 100", r.scoreTable?.total === 100, String(r.scoreTable?.total));
+
+  // 배점 비율 한 줄만 있어도 다 찾은 것으로 보고 멈추면 안 됩니다.
+  const only1 = await analyze({ files: [files[1], files[2]] }, "/tmp", fake);
+  check("비율 한 줄만으로 조기 종료하지 않는다", !!only1.scoreTable,
+        only1.scoreTable ? "심사표까지 읽음" : "제안요청서를 안 열었음");
+
+  // 자가채점까지 이어지는지 — 여기까지 와야 화면 숫자가 바뀝니다.
+  const { selfScore } = await import("./lib/selfscore.mjs");
+  const { loadRecords } = await import("./lib/records.mjs");
+  const recs = await loadRecords();
+  const co = { region: "서울특별시", maxRecord: recs.maxRecord, certs: ["벤처기업", "기업부설연구소"], directProduce: [] };
+  const sc = selfScore({ scoreTable: r.scoreTable, credits: r.credits, region: r.region, directItems: null }, co, 2e8, recs);
+  check("합친 결과로 자가채점이 된다", sc?.mode === "심사표" && sc.max > 0,
+        sc ? `정량 ${sc.max}점 중 ${sc.got}점 (${sc.pct}%)` : "채점 안 됨");
 }
 
 console.log(`\n[자체점검] 통과 ${pass} · 실패 ${fail}`);

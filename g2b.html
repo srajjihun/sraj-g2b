@@ -746,6 +746,7 @@ table.prof .sub2{font-size:12.5px; color:var(--ink-3); font-weight:600}
     </div>
     <p class="foot">
       점수가 왜 그렇게 나왔는지를 항목 하나까지 펼쳐 봅니다 · 다른 화면에서 <b>점수 배지를 누르면</b> 그 공고로 바로 옵니다<br>
+      참가 불가로 판정된 공고는 여기 넣지 않습니다 · 사유는 목록 화면의 <b>제외 N건 · 보기</b> 에서 확인하세요<br>
       자가채점은 <b>총점 예상이 아니라 정량 항목 득점률</b>입니다 · 정성평가와 가격평가는 제안서를 써봐야 알고 공고끼리 비교값이 아니라 뺐습니다<br>
       외부에서 만든 분석 문서가 있으면 아래에 함께 싣고, 우리 데이터로 대조한 결과를 표시합니다
     </p>
@@ -1115,12 +1116,14 @@ const openUrl = it => it.url || it.files?.[0]?.url || "";
       const tip=`심사표 자가채점 — 정량 ${sc.max}점 중 ${sc.got}점`
         + (sc.unknown?` · 채점 못한 정량 ${sc.unknown}점` + (sc.unknownKinds?.length ? `(${sc.unknownKinds.join("·")})` : ""):"")
         + (sc.why.length?`\n\n${sc.why.join("\n")}`:"");
+      if(sc.blocked) return `<span class="sc no" title="${esc(tip)}">불가</span>`;
       return `<button type="button" class="sc ${band} selfsc goprop" data-prop="${it._i}" title="${esc(tip)}"><span class="v">${sc.total}</span><small>%</small></button>`;
     }
     const tip=`추정 — 심사표를 못 읽어 공고 성격으로 매긴 값입니다`
       + `\n참가 ${sc.entry}/40 · 실적 ${sc.record}/35 · 평가 ${sc.evaluation}/25`
       + (t!==null&&t!==undefined?`\n기술 ${t} : 가격 ${it.doc?.rate?.price ?? it.priceRate ?? 100-t}`:"")
       + (sc.provisional?"\n(회사정보 미입력 — 잠정)":"");
+    if(sc.blocked) return `<span class="sc no" title="${esc(tip)}">불가</span>`;
     return `<button type="button" class="sc ${band} est${sc.provisional?" prov":""} goprop" data-prop="${it._i}" title="${esc(tip)}">`
       + `<span class="v">${sc.total}</span></button>`;
   };
@@ -1420,7 +1423,9 @@ function scoreBadge(it){
   const T = (cls,tip,inner)=> go
     ? `<button type="button" class="sc ${cls} goprop"${go} title="${tip}">${inner}</button>`
     : `<span class="sc ${cls}" title="${tip}">${inner}</span>`;
-  if(s.blocked) return T("no", esc((s.why||[]).join(" · ")), "참가 불가");
+  /* 참가 불가는 제안서 분석에 싣지 않으므로 누를 곳이 없습니다.
+     사유는 이 자리에 마우스를 올리면 그대로 보입니다. */
+  if(s.blocked) return `<span class="sc no" title="${esc((s.why||[]).join(" · "))}">참가 불가</span>`;
   const band = s.total >= 75 ? "s3" : s.total >= 60 ? "s2" : s.total >= 45 ? "s1" : "s0";
   if(s.self){
     const tip = `심사표 자가채점 — 정량 ${s.max}점 중 ${s.got}점`
@@ -1901,9 +1906,11 @@ cardView("view-urg", URG_POSTS, "bid", "#nav-n-urg", "due");
 
   /* 분석할 수 있는 공고 = 점수가 붙은 공고 전부.
      자가채점된 것을 위에 둡니다 — 근거가 공고문에 있는 쪽이 먼저 볼 값입니다. */
-  const RANK = it => (it.score?.self ? 0 : it.score?.blocked ? 2 : 1);
-  const LIST = PROP_ITEMS.filter(it=>it.score)
-    .sort((a,b)=> RANK(a)-RANK(b) || (b.score.total??0)-(a.score.total??0));
+  /* 참가 불가로 판정된 공고는 넣지 않습니다 — 제안서를 쓸 일이 없는 공고의
+     채점 근거를 늘어놓으면 목록만 길어지고 봐야 할 공고가 묻힙니다.
+     불가 사유는 목록 화면의 "제외 N건 · 보기" 에서 배지에 그대로 뜹니다. */
+  const LIST = PROP_ITEMS.filter(it=>it.score && !it.score.blocked)
+    .sort((a,b)=> (a.score.self?0:1)-(b.score.self?0:1) || (b.score.total??0)-(a.score.total??0));
 
   /* 외부 분석 문서. build-page.mjs 가 config/제안분석/*.md 를 읽어 심습니다. */
   const DOCS = Array.isArray(DATA.proposals) ? DATA.proposals : [];
@@ -1934,8 +1941,7 @@ cardView("view-urg", URG_POSTS, "bid", "#nav-n-urg", "due");
       || (it.org||"").toLowerCase().includes(q));
     const one = (it) => {
       const s = it.score;
-      const tag = s.blocked ? `<span class="sc no">불가</span>`
-        : s.self ? `<span class="sc ${s.total>=75?"s3":s.total>=60?"s2":"s1"} selfsc">자가 ${s.total}<small>%</small></span>`
+      const tag = s.self ? `<span class="sc ${s.total>=75?"s3":s.total>=60?"s2":"s1"} selfsc">자가 ${s.total}<small>%</small></span>`
         : `<span class="sc ${s.total>=75?"s3":s.total>=60?"s2":"s1"} est">추정 ${s.total}</span>`;
       const has = docFor(it) ? ` · <b>분석문서</b>` : "";
       return `<button type="button" class="propitem${st.sel===it._i?" on":""}" data-pick="${it._i}">
@@ -2015,10 +2021,6 @@ cardView("view-urg", URG_POSTS, "bid", "#nav-n-urg", "due");
   function estBlock(it){
     const s = it.score;
     if(s.self) return "";
-    if(s.blocked) return `<div class="panel"><h2>점수를 매기지 않았습니다<span class="soft">참가할 수 없는 공고입니다</span></h2>
-      <div class="pnote">참가 자격에 걸리면 나머지가 아무리 좋아도 의미가 없어 총점을 0 으로 둡니다.
-        조건별 판정은 아래 <b>참가 자격 판정</b> 표에 있습니다.<br>
-        우리 판정이 틀렸다고 보시면 목록 화면 위의 <b>제외 N건 · 보기</b> 로 되돌려 볼 수 있습니다.</div></div>`;
     const rows = [
       ["참가 가능성", s.entry, 40, "지역·업종·실적 제한에 걸리는가, 컨소시엄으로 풀 수 있는가"],
       ["유사실적",   s.record, 35, "우리 최대 수행실적이 이 사업 규모를 감당하는가"],
@@ -2118,20 +2120,8 @@ cardView("view-urg", URG_POSTS, "bid", "#nav-n-urg", "due");
     if(!it){ body.innerHTML=""; return; }
     const s = it.score, d = docFor(it);
     const u = g2bLink(it);
-    const cls = s.blocked ? "no" : s.self ? "selfsc" : "est";
-    /* 불가 사유는 "참가 불가: 지역" 보다 "부산광역시 제한 · 우리 서울특별시" 가
-       훨씬 쓸모 있습니다. 자격 판정의 상세 문장이 있으면 그것을 먼저 씁니다. */
-    /* judgeBlocked 의 blockWhy 는 같은 자격 판정에서 만들어지므로 그대로 이으면
-       똑같은 문장이 두 번 나옵니다. 자격 판정에 없는 사유(직접생산확인 품목 등)만 덧붙입니다. */
-    const echk = (it.doc?.eligibility?.checks ?? []).filter(c=>c.verdict==="불가");
-    const keys = new Set(echk.map(c=>c.key));
-    const bwhy = [
-      ...echk.map(c=>`${c.key} — ${c.detail}`),
-      ...(it.self?.blockWhy ?? []).filter(w=>![...keys].some(k=>String(w).startsWith(k))),
-    ];
-    const head = s.blocked
-      ? `<div class="big">참가 불가</div><div class="fx">${esc((bwhy.length?bwhy:(s.why||[])).join("<br>")).replace(/&lt;br&gt;/g,"<br>")}</div>`
-      : s.self
+    const cls = s.self ? "selfsc" : "est";
+    const head = s.self
         ? `<div class="big">${s.total}<small>%</small></div>
            <div class="fx"><b>자가채점</b> — 이 공고의 심사표에서 우리가 채점할 수 있는 정량 항목만 셌습니다.<br>
              정량 <b>${it.self.max}점</b> 중 <b>${it.self.got}점</b> = ${s.total}%

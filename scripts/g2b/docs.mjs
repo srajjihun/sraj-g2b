@@ -40,7 +40,9 @@ const VERSION = 2;
 
 const DEFAULT_LIMIT = 20;
 // 공고문은 보통 첫 두어 개 첨부에 들어 있습니다. 전부 받으면 시간만 걸립니다.
-const MAX_FILES_PER_NOTICE = 3;
+// 제안요청서가 네 번째 첨부인 공고가 실제로 있습니다. 정렬로 앞에 끌어오지만,
+// 산출내역서 같은 것이 여러 개 붙은 공고도 있어 한 칸 여유를 둡니다.
+const MAX_FILES_PER_NOTICE = 4;
 const MAX_BYTES = 30 * 1024 * 1024;
 
 async function loadJson(url, fallback) {
@@ -59,32 +61,72 @@ async function saveJson(url, value) {
 
 /**
  * 공고문일 가능성이 높은 첨부부터 봅니다.
- * 산출내역서·청렴서약서 같은 것보다 제안요청서·공고문에 우리가 찾는 내용이 있습니다.
+ *
+ * 순서를 두 단으로 나눈 이유:
+ *   심사표(배점표)는 대개 **제안요청서·과업지시서**에 있고, 참가자격(지역·업종)은
+ *   **입찰공고문**에 있습니다. 예: "국민건강보험 일산병원 온라인홍보 사업 협력사
+ *   선정" 은 배점표가 제안요청서에만 있습니다. 첨부 개수 제한에 걸려 제안요청서를
+ *   아예 못 열면 그 공고는 영영 자가채점이 안 됩니다. 그래서 제안요청서를 먼저 봅니다.
  */
 function rankFiles(files) {
   const score = (name) => {
     const n = String(name ?? "");
-    if (/제안요청|과업지시|과업내용|입찰공고|공고문|규격서/.test(n)) return 0;
-    if (/산출|내역|서약|청렴|양식|서식|위임|증명/.test(n)) return 3;
-    return 1;
+    if (/제안요청|과업지시|과업내용|제안안내|입찰설명/.test(n)) return 0; // 심사표가 여기 있습니다
+    if (/입찰공고|공고문|규격서|안내서/.test(n)) return 1;               // 참가자격이 여기 있습니다
+    if (/산출|내역|서약|청렴|양식|서식|위임|증명|동의|확약/.test(n)) return 4;
+    return 2;
   };
   return [...(files ?? [])].sort((a, b) => score(a.name) - score(b.name));
 }
 
 /** 공고 1건 처리 */
-async function analyze(item, workDir) {
+/* deps 는 자체점검용 구멍입니다. 이 함수의 핵심은 "여러 첨부에서 조각을 모으는
+   순서와 규칙" 인데, 진짜 파일을 내려받아야만 시험할 수 있으면 그 규칙을 영영
+   시험하지 못합니다. 평소에는 기본값이 그대로 쓰입니다. */
+async function analyze(item, workDir, deps = {}) {
+  const dl = deps.download ?? download;
+  const rd = deps.readDocument ?? readDocument;
   const files = rankFiles(item.files).slice(0, MAX_FILES_PER_NOTICE);
   if (!files.length) {
     return { ok: false, note: "첨부파일이 없습니다", kinds: [] };
   }
 
   const kinds = [];
-  let best = null;
+
+  /* 첨부 하나만 골라 쓰지 않고 **필드별로 합칩니다.**
+     예전에는 "가장 많이 알아낸 파일 하나"를 골라 나머지를 버렸습니다. 그런데
+     참가자격은 입찰공고문에, 심사표는 제안요청서에 나뉘어 있는 것이 흔합니다.
+     그러면 항목 수로는 입찰공고문이 이기고, 제안요청서에만 있던 심사표가
+     통째로 버려집니다 — 자가채점이 안 되는 공고의 큰 몫이 이 경우였습니다.
+     이제 각 항목을 처음 찾아낸 파일에서 가져오고, 어느 파일에서 나왔는지도
+     같이 남깁니다. */
+  const merged = { region: null, industry: [], record: null, rate: null,
+                   scoreTable: null, credits: [], directItems: null };
+  const sources = {};
+  let readAny = false;
+  let chars = 0;
+
+  const take = (key, value, from) => {
+    if (merged[key] || !value) return;
+    merged[key] = value;
+    sources[key] = from;
+  };
+  // 여러 파일에 흩어져 나오는 목록은 합칩니다 (업종·인증은 공고문과 제안요청서에 나뉘어 적히기도 합니다)
+  const join = (key, list, keyOf, from) => {
+    if (!list?.length) return;
+    const seen = new Set(merged[key].map(keyOf));
+    for (const x of list) {
+      if (seen.has(keyOf(x))) continue;
+      seen.add(keyOf(x));
+      merged[key].push(x);
+    }
+    if (!sources[key]) sources[key] = from;
+  };
 
   for (const f of files) {
     let buf;
     try {
-      buf = await download(f.url);
+      buf = await dl(f.url);
     } catch (err) {
       kinds.push({ name: f.name, kind: "?", note: `내려받기 실패: ${err.message}` });
       continue;
@@ -94,28 +136,56 @@ async function analyze(item, workDir) {
       continue;
     }
 
-    const doc = await readDocument(buf, { workDir });
+    const doc = await rd(buf, { workDir });
     kinds.push({ name: f.name, kind: doc.kind, note: doc.note });
     if (!doc.ok || !doc.text) continue;
 
     const req = extractRequirements(doc.text, doc.tables);
-    const filled = Object.values(req.found).filter(Boolean).length;
-    // 여러 첨부 중 가장 많이 알아낸 것을 씁니다.
-    if (!best || filled > best.filled) {
-      best = { filled, req, source: f.name, chars: doc.text.length };
+    readAny = true;
+    chars += doc.text.length;
+
+    take("region", req.region, f.name);
+    take("record", req.record, f.name);
+    take("rate", req.rate, f.name);
+    take("directItems", req.directItems?.length ? req.directItems : null, f.name);
+    join("industry", req.industry, (x) => x.value, f.name);
+    join("credits", req.credits, (x) => x.term, f.name);
+
+    /* 심사표는 여러 파일에 있을 수 있습니다(공고문의 요약표 + 제안요청서의 상세표).
+       합이 100 에 가까운 쪽이 진짜 배점표입니다 — 요약표는 항목이 잘려 합이 안 맞습니다. */
+    if (req.scoreTable) {
+      const near = (t) => Math.abs((t?.total ?? 0) - 100);
+      if (!merged.scoreTable || near(req.scoreTable) < near(merged.scoreTable)) {
+        merged.scoreTable = req.scoreTable;
+        sources.scoreTable = f.name;
+      }
     }
-    // 자격·배점을 다 찾았으면 나머지 첨부는 볼 필요가 없습니다.
-    if (req.found.region && req.found.score) break;
+
+    /* 그만 볼 조건은 "심사표를 실제로 찾았을 때" 입니다.
+       예전에는 배점 비율 한 줄("기술 80 : 가격 20")만 있어도 다 찾은 것으로 보고
+       멈췄습니다. 그 한 줄은 입찰공고문에 거의 항상 있으므로, 정작 심사표가 든
+       제안요청서를 한 번도 열지 않고 끝나는 일이 생겼습니다. */
+    if (merged.region && merged.scoreTable) break;
   }
 
-  if (!best) return { ok: false, note: "읽을 수 있는 공고문이 없습니다", kinds };
+  if (!readAny) return { ok: false, note: "읽을 수 있는 공고문이 없습니다", kinds };
+
+  const found = {
+    region: !!merged.region,
+    industry: merged.industry.length > 0,
+    record: !!merged.record,
+    score: !!merged.scoreTable || !!merged.rate,
+  };
   return {
     ok: true,
     note: "",
     kinds,
-    source: best.source,
-    chars: best.chars,
-    ...best.req,
+    // 심사표를 준 파일이 이 공고를 대표합니다. 없으면 자격을 준 파일.
+    source: sources.scoreTable || sources.region || Object.values(sources)[0] || files[0]?.name || "",
+    sources,
+    chars,
+    ...merged,
+    found,
   };
 }
 
