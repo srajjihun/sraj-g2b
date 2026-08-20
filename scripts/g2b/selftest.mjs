@@ -779,5 +779,23 @@ function buildZip(files) {
         sc ? `정량 ${sc.max}점 중 ${sc.got}점 (${sc.pct}%)` : "채점 안 됨");
 }
 
+/* ⑬ 해석기 판 검사 — 해석 규칙을 고쳤으면 VERSION 을 올렸는가.
+      판을 안 올리면 새 규칙이 이미 읽은 공고에 영영 반영되지 않습니다.
+      기억에 맡겼다가 실제로 두 번 빼먹어 기계 검사로 바꿨습니다. */
+{
+  const { readFile } = await import("node:fs/promises");
+  const { analyzerHash } = await import("./lib/analyzer-stamp.mjs");
+  const stamp = JSON.parse(await readFile(new URL("analyzer-stamp.json", import.meta.url), "utf8"));
+  const hash = await analyzerHash();
+  const src = await readFile(new URL("docs.mjs", import.meta.url), "utf8");
+  const ver = Number(/const VERSION = (\d+);/.exec(src)?.[1]);
+  check("VERSION 이 stamp 와 같다", ver === stamp.version, `코드 ${ver} · stamp ${stamp.version}`);
+  check("해석기 코드를 고쳤으면 판을 올렸다", hash === stamp.hash,
+    hash === stamp.hash ? "" :
+    `해석기 파일이 바뀌었습니다. docs.mjs 의 VERSION 을 1 올리고, ` +
+    `node -e 'import("./scripts/g2b/lib/analyzer-stamp.mjs").then(async m=>{const {writeFile}=await import("node:fs/promises");await writeFile("scripts/g2b/analyzer-stamp.json", JSON.stringify({version:새판, hash:await m.analyzerHash()})+"\\n")})' ` +
+    `로 stamp 를 갱신하세요 (새 hash: ${hash})`);
+}
+
 console.log(`\n[자체점검] 통과 ${pass} · 실패 ${fail}`);
 if (fail) process.exitCode = 1;
