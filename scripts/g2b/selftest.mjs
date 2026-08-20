@@ -483,10 +483,33 @@ function buildZip(files) {
     check("참여인력 방침을 안 켜면 미확인", !s5.items.some((i) => i.kind === "인력") && s5.unknownKinds.includes("인력"),
           JSON.stringify(s5.unknownKinds));
     // 구간표를 못 읽었으면 등급만으로 점수를 지어내면 안 됩니다.
-    const t2 = extractRequirements("", [{ grid: [["평가항목", "배점", "세부"], ["경영상태", "10", "재무제표 평가"], ["과업제안내용", "90", ""]] }]).scoreTable;
+    // 채점되는 항목을 하나 같이 둡니다 — 경영만 두면 max=0 이라 결과 자체가 null 이 되어
+    // "왜 못 셌는지" 를 확인할 자리가 없어집니다.
+    const t2 = extractRequirements("", [{ grid: [["평가항목", "배점", "세부"],
+      ["경영상태", "10", "재무제표 평가"], ["참여인력", "10", ""], ["과업제안내용", "80", ""]] }]).scoreTable;
     const s4 = selfScore({ scoreTable: t2, credits: [], region: null, directItems: null }, co, 1e8, r);
     check("구간표를 못 읽으면 경영은 미확인", s4 === null || !s4.items?.some((i) => i.kind === "경영"),
           JSON.stringify(s4?.items ?? null));
+    // 못 센 사유가 사실과 달라 실제로 헤맸습니다 — 사유를 항목별로 남기는지 봅니다.
+    const why = (r, kind) => (r?.skipped ?? []).find((x) => x.kind === kind)?.why ?? "";
+    check("등급표를 못 읽었으면 그렇게 적는다", /구간을 못 읽/.test(why(s4, "경영")), why(s4, "경영"));
+    check("신용등급이 없으면 그렇게 적는다", /미입력/.test(why(s3, "경영")), why(s3, "경영"));
+
+    /* 등급 사다리가 심사표 칸이 아니라 문서의 딴 표에 있는 공고가 더 많습니다.
+       그것을 못 찾으면 신용등급을 넣어도 영영 채점이 안 됩니다. */
+    const 심사표 = [["평가항목", "배점", "세부"], ["재무·경영상태 · 최근 연도 업체신용평가", "5", ""], ["사업이해도", "95", ""]];
+    const 사다리 = [["신용평가등급", "배점"], ["A0 이상", "10점"], ["BBB- ~ BB-", "8점"], ["B+ 이하", "6점"]];
+    const t5 = extractRequirements("", [{ grid: 심사표 }, { grid: 사다리 }]).scoreTable;
+    const c5 = t5.items.find((i) => i.kind === "경영");
+    check("등급표를 문서의 딴 표에서 찾아 붙인다", c5?.creditTiers?.length === 3, `${c5?.creditTiers?.length}칸`);
+    const s6 = selfScore({ scoreTable: t5, credits: [], region: null, directItems: null }, co, 1e8, r);
+    const got6 = s6.items.find((i) => i.kind === "경영");
+    // 10점짜리 사다리를 5점 항목에 쓰면 비율로 환산해야 합니다 (8/10 → 4/5).
+    check("사다리 배점이 다르면 비율로 환산한다", got6?.got === 4, JSON.stringify(got6));
+    check("어디서 가져온 표인지 밝힌다", /다른 곳에서 찾았/.test(got6?.why ?? ""), got6?.why);
+    // 한 칸짜리 언급을 사다리로 오해하면 점수를 지어내게 됩니다.
+    const t7 = extractRequirements("", [{ grid: 심사표 }, { grid: [["안내", "내용"], ["비고", "A0 이상이면 만점 10점"]] }]).scoreTable;
+    check("한 칸짜리 언급은 사다리로 안 본다", (t7.items.find((i) => i.kind === "경영")?.creditTiers?.length ?? 0) === 0);
   }
 
   const company = { region: "서울특별시", maxRecord: r.maxRecord, certs: [], directProduce: [] };
@@ -635,8 +658,10 @@ function buildZip(files) {
   check("채점 근거 열 이름이 점수 예측 평가", html.includes("<th>점수 예측 평가</th>"));
   check("공고문 원문 배점표는 뺐다", !/function rawBlock/.test(html) && !/rawtab/.test(html));
   check("분모 설명문은 뺐다", !html.includes("분모가 ${s.max}점인 이유"));
-  check("개요·강점약점·전략·발주처가 붙어 있다",
-    ["briefBlock","swBlock","strategyBlock","orgBlock"].every((f)=>html.includes(`function ${f}(`)));
+  check("개요·강점약점·유사사례·발주처가 붙어 있다",
+    ["briefBlock","swBlock","similarBlock","orgBlock"].every((f)=>html.includes(`function ${f}(`)));
+  check("수주 전략 포인트는 뺐다", !html.includes("strategyBlock"));
+  check("못 센 사유는 실제 문장을 쓴다", html.includes("miss?.why"));
   check("제안서 분석은 참가 불가를 뺀다",
     /PROP_ITEMS\.filter\(it=>it\.score && !it\.score\.blocked\)/.test(html));
 }

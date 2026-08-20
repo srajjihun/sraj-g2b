@@ -115,9 +115,16 @@ function scoreManage(item, company) {
   if (!grade) return { got: null, why: "우리 신용등급 미입력" };
   if (!item.creditTiers?.length) return { got: null, why: `${grade} 보유 · 이 공고의 등급별 배점 구간을 못 읽음` };
   const hit = creditScore(item.creditTiers, grade);
-  if (!hit) return { got: null, why: `${grade} 이 구간표 어디에도 안 들어감` };
-  const got = Math.min(hit.score, item.score);
-  return { got, why: `${grade} → ${hit.tier.grades.join("·")} 칸 ${got}점` };
+  if (!hit) return { got: null, why: `${grade} · 이 공고의 등급 구간 어디에도 들어가지 않습니다` };
+  /* 사다리를 딴 표에서 가져왔으면 만점이 이 항목 배점과 다를 수 있습니다
+     (10점짜리 사다리인데 이 항목은 5점). 그때는 비율로 환산합니다 —
+     그냥 자르면 낮은 등급이 만점처럼 보입니다. */
+  const ladderMax = Math.max(...item.creditTiers.map((t) => t.score));
+  const got = ladderMax > item.score
+    ? Math.round((item.score * hit.score / ladderMax) * 10) / 10
+    : Math.min(hit.score, item.score);
+  const from = item.creditFrom ? " (등급표는 공고문 다른 곳에서 찾았습니다)" : "";
+  return { got, why: `${grade} → ${hit.tier.grades.join("·")} 칸 ${got}점${from}` };
 }
 
 /**
@@ -189,10 +196,19 @@ export function selfScore(doc, company, budget, records) {
   // 무엇을 못 채점했는지도 남깁니다. 화면에 "경영상태·인력" 이라고 고정으로
   // 박아 두었더니 지역이 미확인일 때도 그 문구가 나왔습니다 — 사실이 아닙니다.
   const unknownKinds = new Set();
+  /* 왜 못 셌는지도 항목별로 남깁니다.
+     예전에는 사유를 버리고 화면에서 종류별 상투 문구를 붙였는데, 그러면
+     "구간표를 못 읽었다" 인 경우에도 "신용등급이 회사정보에 없습니다" 라고
+     사실과 다른 말이 나옵니다. 실제로 그것 때문에 헤맸습니다. */
+  const skipped = [];
 
   for (const it of table.items) {
     if (EXCLUDED.has(it.kind)) continue;
-    if (!SCORABLE.has(it.kind)) { unknown += it.score; unknownKinds.add(it.kind); continue; }
+    if (!SCORABLE.has(it.kind)) {
+      unknown += it.score; unknownKinds.add(it.kind);
+      skipped.push({ name: it.name, kind: it.kind, score: it.score, why: "우리가 분류하지 못한 항목입니다" });
+      continue;
+    }
 
     const r =
       it.kind === "실적" ? scoreRecord(it, company, budget, records)
@@ -201,7 +217,11 @@ export function selfScore(doc, company, budget, records) {
       : it.kind === "인력" ? scorePeople(it, company)
       : scoreRegion(it, company, doc.region);
 
-    if (r.got === null) { unknown += it.score; unknownKinds.add(it.kind); continue; }
+    if (r.got === null) {
+      unknown += it.score; unknownKinds.add(it.kind);
+      skipped.push({ name: it.name, kind: it.kind, score: it.score, why: r.why });
+      continue;
+    }
     got += r.got;
     max += it.score;
     items.push({ name: it.name, kind: it.kind, score: it.score, got: r.got, why: r.why });
@@ -216,6 +236,7 @@ export function selfScore(doc, company, budget, records) {
     max,
     unknown,
     unknownKinds: [...unknownKinds],
+    skipped,
     items,
     blocked,
     blockWhy,

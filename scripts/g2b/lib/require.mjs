@@ -536,6 +536,36 @@ function findCredits(ls) {
  * @param {string} text   본문
  * @param {Array}  tables 표(HWPX 에서만 나옵니다)
  */
+/**
+ * 문서 전체에서 신용평가등급 사다리를 찾습니다.
+ *
+ * 심사표의 경영상태 칸에 등급별 점수가 같이 적혀 있는 공고도 있지만,
+ * 그 칸은 "• 최근 연도 업체신용평가" 한 줄만 두고 등급표는 아래 딴 표나
+ * 본문에 따로 두는 공고가 더 많습니다. 그러면 항목만 보고는 채점할 수가
+ * 없습니다. 표를 전부, 본문까지 훑어 사다리를 찾습니다.
+ *
+ * 두 칸 이상 나오는 것만 사다리로 봅니다 — 한 칸짜리는 "A0 이상 만점" 같은
+ * 지나가는 말일 때가 많아 그것만으로 점수를 매기면 지어내는 셈입니다.
+ */
+function findCreditLadder(ls, tables) {
+  const cands = [];
+  for (const t of tables ?? []) {
+    const flat = (t.grid ?? []).map((r) => r.join(" ")).join("\n");
+    const tiers = parseCreditTiers(flat);
+    if (tiers.length >= 2) cands.push({ tiers, evidence: clip(flat, 170) });
+  }
+  for (let i = 0; i < (ls?.length ?? 0); i += 1) {
+    const win = [ls[i], ls[i + 1] ?? "", ls[i + 2] ?? ""].join(" ");
+    if (!/신용|등급/.test(win)) continue;
+    const tiers = parseCreditTiers(win);
+    if (tiers.length >= 2) cands.push({ tiers, evidence: clip(win, 170) });
+  }
+  if (!cands.length) return null;
+  // 칸이 많은 쪽이 진짜 사다리입니다.
+  cands.sort((a, b) => b.tiers.length - a.tiers.length);
+  return cands[0];
+}
+
 export function extractRequirements(text, tables) {
   const ls = lines(text);
   const region = findRegion(ls);
@@ -543,6 +573,19 @@ export function extractRequirements(text, tables) {
   const record = findRecord(ls);
   const rate = findRateLine(ls);
   const scoreTable = findScoreTable(tables);
+  /* 경영상태 항목에 등급표가 안 붙어 있으면 문서 전체에서 찾아 붙입니다.
+     붙이지 못하면 그 항목은 채점하지 않습니다 — 등급만 알고 배점표를 모르면
+     점수를 지어내게 됩니다. */
+  if (scoreTable?.items?.length) {
+    const need = scoreTable.items.filter((i) => i.kind === "경영" && !i.creditTiers.length);
+    if (need.length) {
+      const ladder = findCreditLadder(ls, tables);
+      if (ladder) for (const i of need) {
+        i.creditTiers = ladder.tiers;
+        i.creditFrom = ladder.evidence; // 어디서 가져온 표인지 남깁니다
+      }
+    }
+  }
   const credits = findCredits(ls);
   const directItems = findDirectItems(ls);
 

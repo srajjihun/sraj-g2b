@@ -2002,6 +2002,10 @@ cardView("view-urg", URG_POSTS, "bid", "#nav-n-urg", "due");
     const raw = it.doc?.scoreTable;
     if(!s || s.mode!=="심사표" || !raw) return "";
     const scored = new Map(s.items.map(i=>[i.name+"|"+i.score, i]));
+    /* 못 센 사유는 채점기가 남긴 실제 문장을 씁니다.
+       종류별 상투 문구를 붙였더니 "등급표를 못 읽었다" 인 경우에도
+       "신용등급이 회사정보에 없습니다" 라고 사실과 다른 말이 나왔습니다. */
+    const missed = new Map((s.skipped ?? []).map(i=>[i.name+"|"+i.score, i]));
     const rows = raw.items.map(ri=>{
       const hit = scored.get(ri.name+"|"+ri.score);
       if(hit) return `<tr>
@@ -2009,9 +2013,10 @@ cardView("view-urg", URG_POSTS, "bid", "#nav-n-urg", "due");
         <td class="pt">${ri.score}</td>
         <td class="pt">${hit.got}${bar(hit.got, ri.score)}</td>
         <td class="why">${esc(hit.why)}</td></tr>`;
+      const miss = missed.get(ri.name+"|"+ri.score);
       const why = ["정성","가격"].includes(ri.kind)
         ? `채점 대상 아님 — ${KIND_NOTE[ri.kind]}`
-        : `채점 못함 — ${KIND_NOTE[ri.kind] || "판단 근거가 없습니다"}`;
+        : `채점 못함 — ${miss?.why || KIND_NOTE[ri.kind] || "판단 근거가 없습니다"}`;
       return `<tr class="off">
         <td class="nm">${esc(ri.name)}<span class="kd">${esc(ri.kind)}</span></td>
         <td class="pt">${ri.score}</td>
@@ -2167,35 +2172,6 @@ cardView("view-urg", URG_POSTS, "bid", "#nav-n-urg", "due");
       <div class="swlist">${box("good","강점",강점)}${box("bad","약점",약점)}</div></div>`;
   }
 
-  /* ── 수주 전략 포인트 ──
-     배점이 큰 항목이 승부처입니다. 우리가 채점할 수 없는 정성 항목이
-     대개 여기에 몰려 있는데, 그래서 더 중요합니다 — 점수로는 안 보이지만
-     실제로 당락을 가르는 곳입니다. */
-  function strategyBlock(it){
-    const raw = it.doc?.scoreTable;
-    if(!raw?.items?.length) return "";
-    const top = [...raw.items].sort((a,b)=>b.score-a.score).slice(0,4);
-    const scored = new Map((it.self?.items ?? []).map(i=>[i.name+"|"+i.score, i]));
-    const rows = top.map(i=>{
-      const hit = scored.get(i.name+"|"+i.score);
-      const 상태 = hit ? (hit.got>=i.score ? `우리 <b>${hit.got}/${i.score}</b> — 이미 만점입니다`
-                        : `우리 <b>${hit.got}/${i.score}</b> — <b>${Math.round((i.score-hit.got)*10)/10}점</b>을 더 받을 수 있습니다`)
-        : ["정성","가격"].includes(i.kind) ? `제안서로 승부하는 항목입니다 — 점수에는 안 잡히지만 여기서 갈립니다`
-        : `근거가 없어 채점 못했습니다 — 확인하면 점수가 바뀝니다`;
-      return `<tr><th>${esc(i.name)}</th><td><b>${i.score}점</b> <span class="kd${hit?" on":""}">${esc(i.kind)}</span> · ${상태}</td></tr>`;
-    }).join("");
-    const 정성 = raw.items.filter(i=>i.kind==="정성").reduce((a,i)=>a+i.score,0);
-    const 정량 = raw.total - 정성 - raw.items.filter(i=>i.kind==="가격").reduce((a,i)=>a+i.score,0);
-    const 가격 = raw.items.filter(i=>i.kind==="가격").reduce((a,i)=>a+i.score,0);
-    return `<div class="panel"><h2>수주 전략 포인트<span class="soft">배점이 큰 항목부터</span>
-      <span class="cnt">정성 ${정성} · 정량 ${정량} · 가격 ${가격}</span></h2>
-      <table class="kv"><tbody>${rows}</tbody></table>
-      <div class="pnote">정성 ${정성}점이 제안서로 갈리는 몫입니다.
-        ${정성 >= 50 ? "절반이 넘습니다 — 실적이 조금 모자라도 제안서로 뒤집을 수 있는 판입니다."
-        : 가격 >= 30 ? "가격 비중이 큽니다 — 투찰가를 먼저 정하고 들어가야 합니다."
-        : "정량 비중이 큽니다 — 실적·인증 요건을 먼저 맞추는 쪽이 빠릅니다."}</div></div>`;
-  }
-
   /* ── 발주처 ──
      이 기관이 어떻게 발주하는지, 작년에 누가 가져갔는지.
      기관 프로파일 화면과 같은 데이터를 이 공고 관점에서 다시 봅니다. */
@@ -2206,7 +2182,7 @@ cardView("view-urg", URG_POSTS, "bid", "#nav-n-urg", "due");
     const row = (k,v) => v ? `<tr><th>${k}</th><td>${v}</td></tr>` : "";
     return `<div class="panel"><h2>발주처<span class="soft">${esc(it.org||"")}</span></h2>
       <table class="kv"><tbody>
-        ${row("지금 살아 있는 공고", same.length>1 ? `<b>${same.length}건</b> · 합계 ${억(합)}` : "이 건 하나뿐입니다")}
+        ${row("지금 진행중인 공고", same.length>1 ? `<b>${same.length}건</b> · 합계 ${억(합)}` : "이 건 하나뿐입니다")}
         ${row("작년 같은 사업", L ? (L.corp
             ? `<b>${esc(L.corp)}</b>가 ${억(L.amount)}에 수주${L.rate?` · 낙찰률 ${L.rate}%`:""}${L.bidders?` · ${L.bidders}곳 투찰`:""}`
             : `기록은 있으나 수행업체가 확인되지 않습니다 (유찰이거나 미등재)`)
@@ -2307,7 +2283,6 @@ cardView("view-urg", URG_POSTS, "bid", "#nav-n-urg", "due");
       ${estBlock(it)}
       ${swBlock(it)}
       ${similarBlock(it)}
-      ${strategyBlock(it)}
       ${eligBlock(it)}
       ${creditBlock(it)}
       ${orgBlock(it)}
