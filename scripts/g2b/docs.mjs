@@ -103,6 +103,11 @@ async function analyze(item, workDir, deps = {}) {
   const merged = { region: null, industry: [], record: null, rate: null,
                    scoreTable: null, credits: [], directItems: null };
   const sources = {};
+  /* 신용등급 사다리는 심사표와 다른 파일에 있을 수 있습니다 —
+     심사표는 제안요청서에, 등급표는 입찰공고문에 있는 식입니다.
+     파일마다 찾은 것 중 칸이 가장 많은 것을 골라 뒤에서 이어 붙입니다. */
+  let ladder = null;
+  let ladderFrom = "";
   let readAny = false;
   let chars = 0;
 
@@ -145,6 +150,10 @@ async function analyze(item, workDir, deps = {}) {
     chars += doc.text.length;
 
     take("region", req.region, f.name);
+    if (req.creditLadder && (!ladder || req.creditLadder.tiers.length > ladder.tiers.length)) {
+      ladder = req.creditLadder;
+      ladderFrom = f.name;
+    }
     take("record", req.record, f.name);
     take("rate", req.rate, f.name);
     take("directItems", req.directItems?.length ? req.directItems : null, f.name);
@@ -164,8 +173,24 @@ async function analyze(item, workDir, deps = {}) {
     /* 그만 볼 조건은 "심사표를 실제로 찾았을 때" 입니다.
        예전에는 배점 비율 한 줄("기술 80 : 가격 20")만 있어도 다 찾은 것으로 보고
        멈췄습니다. 그 한 줄은 입찰공고문에 거의 항상 있으므로, 정작 심사표가 든
-       제안요청서를 한 번도 열지 않고 끝나는 일이 생겼습니다. */
-    if (merged.region && merged.scoreTable) break;
+       제안요청서를 한 번도 열지 않고 끝나는 일이 생겼습니다.
+
+       심사표에 경영상태 항목이 있는데 등급 사다리를 아직 못 찾았으면 계속
+       봅니다 — 사다리가 다음 첨부에 있는 공고가 실제로 있었습니다
+       ("밤하늘 캠핑" 관광개발 공고). 여기서 멈추면 신용등급을 넣어도
+       그 공고는 영영 채점이 안 됩니다. */
+    const ladderMissing =
+      !ladder && merged.scoreTable?.items?.some((i) => i.kind === "경영" && !i.creditTiers?.length);
+    if (merged.region && merged.scoreTable && !ladderMissing) break;
+  }
+
+  /* 사다리를 다른 파일에서 찾았으면 경영상태 항목에 이어 붙입니다. */
+  if (merged.scoreTable && ladder) {
+    for (const i of merged.scoreTable.items) {
+      if (i.kind !== "경영" || i.creditTiers?.length) continue;
+      i.creditTiers = ladder.tiers;
+      i.creditFrom = `${ladderFrom} — ${ladder.evidence}`;
+    }
   }
 
   if (!readAny) return { ok: false, note: "읽을 수 있는 공고문이 없습니다", kinds };

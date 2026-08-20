@@ -510,6 +510,48 @@ function buildZip(files) {
     // 한 칸짜리 언급을 사다리로 오해하면 점수를 지어내게 됩니다.
     const t7 = extractRequirements("", [{ grid: 심사표 }, { grid: [["안내", "내용"], ["비고", "A0 이상이면 만점 10점"]] }]).scoreTable;
     check("한 칸짜리 언급은 사다리로 안 본다", (t7.items.find((i) => i.kind === "경영")?.creditTiers?.length ?? 0) === 0);
+
+    /* "점" 자 없이 표로만 적힌 사다리 — "AAA ~ A- | 6.0" 형태.
+       실제 공고("밤하늘 캠핑" 관광개발)가 이 형태였고 통째로 못 읽고 있었습니다. */
+    const 표사다리 = [["신용평가등급", "평점"], ["AAA ~ A-", "6.0"], ["BBB+ ~ BBB-", "5.4"], ["BB+ ~ BB-", "4.8"], ["B+ 이하", "4.2"]];
+    const 캠핑심사표 = [["평가부문", "평가항목", "배점", "세부"],
+      ["기술 평가 (90)", "정량 (20) / 경영상태 / 신용평가등급", "6", ""],
+      ["기술 평가 (90)", "유사용역 수행실적", "14", ""],
+      ["기술 평가 (90)", "사업이해도 및 과업내용", "70", ""],
+      ["가격", "입찰가격", "10", ""]];
+    const { creditScore } = await import("./lib/require.mjs");
+    const t8 = extractRequirements("", [{ grid: 캠핑심사표 }, { grid: 표사다리 }]).scoreTable;
+    const c8 = t8.items.find((i) => i.kind === "경영");
+    check("점 자 없는 표 사다리를 읽는다", c8?.creditTiers?.length === 4, `${c8?.creditTiers?.length}칸`);
+    check("BB0 은 BB+~BB- 구간에 든다", creditScore(c8.creditTiers, "BB0")?.score === 4.8,
+          JSON.stringify(creditScore(c8.creditTiers, "BB0")));
+    const s8 = selfScore({ scoreTable: t8, credits: [], region: null, directItems: null }, co, 1e8, r);
+    check("경영 6점 항목이 4.8점으로 채점된다", s8.items.find((i) => i.kind === "경영")?.got === 4.8,
+          JSON.stringify(s8.items.find((i) => i.kind === "경영")));
+  }
+
+  /* 사다리가 심사표와 다른 첨부파일에 있는 공고.
+     심사표를 찾자마자 멈추면 사다리가 든 다음 파일을 안 열게 됩니다. */
+  {
+    const { analyze } = await import("./docs.mjs");
+    const 심사표만 = "참가자격: 본점 소재지를 서울특별시에 둔 업체로 제한한다";
+    const 심사그리드 = [["평가항목", "배점", "세부"],
+      ["경영상태 · 신용평가등급", "6", ""], ["유사용역실적", "14", "최근 3년 1억 이상 3건 이상 14점"],
+      ["과업내용", "70", ""], ["입찰가격", "10", ""]];
+    const 사다리그리드 = [["신용평가등급", "평점"], ["AAA ~ A-", "6.0"], ["BBB+ ~ BBB-", "5.4"], ["BB+ ~ BB-", "4.8"]];
+    const fake = {
+      download: async (u) => Buffer.from(u),
+      readDocument: async (buf) => {
+        const u = buf.toString();
+        if (u === "u1") return { ok: true, kind: "hwp", note: "", text: 심사표만, tables: [{ grid: 심사그리드 }] };
+        return { ok: true, kind: "hwp", note: "", text: "신용등급 안내", tables: [{ grid: 사다리그리드 }] };
+      },
+    };
+    const files = [{ name: "제안요청서.hwp", url: "u1" }, { name: "입찰공고문.hwp", url: "u2" }];
+    const out = await analyze({ files }, "/tmp", fake);
+    const c = out.scoreTable?.items?.find((i) => i.kind === "경영");
+    check("사다리가 딴 파일에 있어도 이어 붙인다", c?.creditTiers?.length === 3, `${c?.creditTiers?.length ?? 0}칸`);
+    check("어느 파일에서 왔는지 남긴다", /입찰공고문/.test(c?.creditFrom ?? ""), c?.creditFrom);
   }
 
   const company = { region: "서울특별시", maxRecord: r.maxRecord, certs: [], directProduce: [] };

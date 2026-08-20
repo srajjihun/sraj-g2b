@@ -547,9 +547,52 @@ function findCredits(ls) {
  * 두 칸 이상 나오는 것만 사다리로 봅니다 — 한 칸짜리는 "A0 이상 만점" 같은
  * 지나가는 말일 때가 많아 그것만으로 점수를 매기면 지어내는 셈입니다.
  */
+/**
+ * 표의 행에서 사다리를 읽습니다.
+ *
+ * 등급표는 "AAA ~ A- | 6.0" 처럼 한 행에 등급 구간과 점수만 놓인 표가
+ * 흔합니다. "점" 자가 없어 parseCreditTiers(문장용)로는 안 잡힙니다.
+ * 행에 등급이 있고 같은 행에 숫자 칸이 있으면 그 짝을 한 칸으로 봅니다.
+ */
+function ladderFromTable(grid) {
+  const tiers = [];
+  for (const row of grid ?? []) {
+    const joined = row.join(" ");
+    const grades = [...joined.matchAll(GRADE_RE)].map((m) => normGrade(m[1]))
+      .filter((g) => gradeRank(g) !== null);
+    if (!grades.length) continue;
+    // 점수: "N점" 이 있으면 그것, 없으면 숫자만 적힌 칸 (6 · 6.0 · 5.4)
+    let score = null;
+    const pt = /([\d.]+)\s*점/.exec(joined);
+    if (pt) score = Number(pt[1]);
+    else {
+      for (const cell of row) {
+        const c = String(cell ?? "").trim();
+        if (!/^\d{1,3}(\.\d+)?$/.test(c)) continue;
+        const n = Number(c);
+        if (n > 0 && n <= 100) { score = n; break; }
+      }
+    }
+    if (score === null || !Number.isFinite(score)) continue;
+    const ranks = grades.map(gradeRank);
+    tiers.push({
+      grades, score,
+      atLeast: /이상|초과/.test(joined), atMost: /이하|미만/.test(joined),
+      min: Math.min(...ranks), max: Math.max(...ranks),
+    });
+  }
+  // 두 칸부터 사다리입니다 — 한 행짜리는 지나가는 언급일 수 있습니다.
+  return tiers.length >= 2 ? tiers : [];
+}
+
 function findCreditLadder(ls, tables) {
   const cands = [];
   for (const t of tables ?? []) {
+    // 행 단위(점수 열이 따로 있는 표)를 먼저, 그다음 통짜 문장으로도 봅니다.
+    const rows = ladderFromTable(t.grid);
+    if (rows.length) {
+      cands.push({ tiers: rows, evidence: clip((t.grid ?? []).map((r) => r.join(" ")).join(" / "), 170) });
+    }
     const flat = (t.grid ?? []).map((r) => r.join(" ")).join("\n");
     const tiers = parseCreditTiers(flat);
     if (tiers.length >= 2) cands.push({ tiers, evidence: clip(flat, 170) });
@@ -576,14 +619,15 @@ export function extractRequirements(text, tables) {
   /* 경영상태 항목에 등급표가 안 붙어 있으면 문서 전체에서 찾아 붙입니다.
      붙이지 못하면 그 항목은 채점하지 않습니다 — 등급만 알고 배점표를 모르면
      점수를 지어내게 됩니다. */
-  if (scoreTable?.items?.length) {
-    const need = scoreTable.items.filter((i) => i.kind === "경영" && !i.creditTiers.length);
-    if (need.length) {
-      const ladder = findCreditLadder(ls, tables);
-      if (ladder) for (const i of need) {
-        i.creditTiers = ladder.tiers;
-        i.creditFrom = ladder.evidence; // 어디서 가져온 표인지 남깁니다
-      }
+  // 사다리는 심사표가 이 파일에 없어도 찾아 둡니다 — 심사표는 제안요청서에,
+  // 등급표는 입찰공고문에 있는 식으로 파일이 갈리는 공고가 있어, 읽은 쪽(docs.mjs)이
+  // 파일을 넘나들며 이어 붙일 수 있어야 합니다.
+  const creditLadder = findCreditLadder(ls, tables);
+  if (scoreTable?.items?.length && creditLadder) {
+    for (const i of scoreTable.items) {
+      if (i.kind !== "경영" || i.creditTiers.length) continue;
+      i.creditTiers = creditLadder.tiers;
+      i.creditFrom = creditLadder.evidence; // 어디서 가져온 표인지 남깁니다
     }
   }
   const credits = findCredits(ls);
@@ -596,6 +640,7 @@ export function extractRequirements(text, tables) {
     rate,          // { tech, price, evidence } | null
     scoreTable,    // { items:[{name,score}], total } | null
     credits,       // [{ term, evidence }] — 언급된 신인도 인증
+    creditLadder,  // { tiers, evidence } | null — 신용등급 사다리 (경영상태 채점용)
     directItems,   // [{ name, evidence }] — 직접생산확인 요구 품목
     found: {
       region: !!region,
