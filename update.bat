@@ -18,8 +18,9 @@ rem    1) download the latest code ZIP from GitHub over this folder
 rem    2) re-filter notices with the current keywords, rebuild the page
 rem    3) verify the new card layout, then open g2b-live.html
 rem
-rem  Never touched: data\g2b\, g2b-live.html, config\, logs\,
-rem  and the G2B_SERVICE_KEY environment variable.
+rem  Never touched: data\g2b\ (including posts.json - always kept as the
+rem  PC's own live data, never rolled back to whatever the ZIP snapshot
+rem  had), g2b-live.html, config\, logs\, and G2B_SERVICE_KEY.
 rem  No G2B OpenAPI call, so the daily quota is unaffected.
 rem ============================================================
 

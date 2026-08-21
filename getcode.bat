@@ -14,9 +14,13 @@ rem    Now the PC commits nothing, so "match the remote" is enough and
 rem    one run repairs a diverged clone.
 rem
 rem  Not overwritten (untracked by git):
-rem    data\g2b\        collected data
-rem    g2b-live.html    generated page
-rem    config\          company-internal settings
+rem    data\g2b\raw\         cached API pulls
+rem    data\g2b\progress.json
+rem    g2b-live.html         generated page
+rem
+rem  Reset to the last published version (tracked by git, 2026-08 for the
+rem  Netlify site): data\g2b\posts.json, docs.json, awards.json. That is
+rem  fine - collect-g2b.bat regenerates and re-publishes them every run.
 rem
 rem  No git, or this folder is not a clone? Use the refresh .bat -
 rem  that one downloads a ZIP from GitHub and needs no git.
@@ -56,9 +60,8 @@ rem that are tracked here can sit in the working tree as UNTRACKED copies
 rem when the clone is parked on an older branch. Plain checkout refuses to
 rem overwrite those ("untracked working tree files would be overwritten")
 rem and the clone stays stuck on the wrong branch forever. -f overwrites
-rem them. It cannot lose the user's own files: config\ company info,
-rem data\g2b\ and g2b-live.html are gitignored, and git leaves ignored
-rem files alone.
+rem them. It cannot lose the user's own files: data\g2b\raw\, progress.json
+rem and g2b-live.html are gitignored, and git leaves ignored files alone.
 git checkout -f -B %BR% FETCH_HEAD
 if errorlevel 1 (
   %SAY% pull-resetfail

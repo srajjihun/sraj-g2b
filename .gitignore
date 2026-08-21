@@ -1,10 +1,17 @@
 logs/
 node_modules/
+public/
 
-# 입찰·영업 정보시스템 — 사내 정보와 수집 데이터는 커밋하지 않습니다.
-# (private 저장소로 옮기기 전까지는 이 저장소가 public 이므로 특히 주의)
+# 입찰 시스템이 쓰던 옛 폴더입니다. 지금은 안 씁니다.
 company/
-data/g2b/
+
+# 나라장터 원본 캐시와 진행 기록 — 용량만 크고 화면에는 필요 없어 커밋하지
+# 않습니다. data/g2b/posts.json · docs.json · awards.json 은 Netlify 배포를
+# 위해 커밋합니다(2026-08 사용자 결정, 아래 참고).
+data/g2b/raw/
+data/g2b/progress.json
+
+# 빌드 산출물. Netlify 가 매 배포 때 새로 굽습니다.
 g2b-live.html
 
 # config/회사정보.md 는 커밋합니다(2026-08 사용자 결정).
@@ -17,3 +24,8 @@ g2b-live.html
 # 주의 하나: 이제 이 파일은 git 이 관리하므로, PC 에서 고치면 다음번
 # 코드 받기(checkout -f)에서 저장소 내용으로 되돌아갑니다. 내용을 바꾸실
 # 때는 저장소 쪽을 고쳐야 합니다.
+
+# data/g2b/posts.json · docs.json · awards.json 도 같은 이유로 커밋합니다
+# (2026-08 Netlify 배포 결정). 수집·분석 결과가 공개 URL 로 나갑니다 —
+# 공고명·예산·우리 자가채점 점수·경쟁사 분석까지 전부 보입니다. collect-g2b.bat
+# 이 수집·분석·화면 생성 뒤 이 세 파일을 자동으로 커밋·푸시합니다.

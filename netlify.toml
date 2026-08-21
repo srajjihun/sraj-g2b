@@ -1,0 +1,18 @@
+# Netlify 배포 설정.
+#
+# 데이터는 PC 가 수집해 저장소에 커밋합니다(data/g2b/posts.json 등).
+# 여기서는 그 데이터를 g2b.html 틀에 심어 정적 페이지로 굽기만 합니다.
+# 나라장터 API 는 한국 IP 에서만 열리므로 Netlify 빌드 서버(해외)에서는
+# API 를 호출하지 않습니다 — build-page.mjs 는 이미 있는 파일만 읽습니다.
+[build]
+  command = "node scripts/g2b/build-page.mjs && mkdir -p public && cp g2b-live.html public/index.html && cp netlify/robots.txt public/robots.txt"
+  publish = "public"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+# 마감 지난 공고가 쌓여도 지도상 오래된 페이지가 캐시에 남지 않도록.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"

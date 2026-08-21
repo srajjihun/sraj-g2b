@@ -1,7 +1,8 @@
 # 나라장터 입찰 레이더
 
 나라장터(조달청) 입찰공고를 매일 모아, 우리가 참여할 수 있는 공고를 골라내고
-공고문의 심사표로 예상 점수를 매깁니다. 화면은 PC 에서 `g2b-live.html` 로 봅니다.
+공고문의 심사표로 예상 점수를 매깁니다. 화면은 PC 에서 `g2b-live.html` 로 보거나,
+Netlify 로 배포한 공개 URL 로 봅니다(아래 참고).
 
 ## 어떤 .bat 을 언제 누르나
 
@@ -32,7 +33,28 @@
 고친 뒤 **화면-새로고침.bat** 한 번이면 이미 모아둔 과거 공고 전부에
 새 기준이 소급 적용됩니다. 다시 수집할 필요가 없습니다.
 
+## Netlify 배포
+
+`netlify.toml` 이 빌드를 정의합니다 — `build-page.mjs` 로 `g2b-live.html` 을
+굽고 `public/index.html` 로 복사합니다. 나라장터 API 는 한국 IP 에서만
+열리므로 Netlify 빌드 서버(해외)는 API 를 부르지 않고, PC 가 이미 만들어
+커밋해 둔 `data/g2b/posts.json`(+ `docs.json`, `awards.json`)만 읽습니다.
+
+연결하는 법 (한 번만):
+1. https://app.netlify.com → **Add new site → Import an existing project**
+2. GitHub → `srajjihun/sraj-g2b` 선택, 브랜치 `main`
+3. Build command · Publish directory 는 `netlify.toml` 을 읽어 자동으로 채워집니다
+   (직접 입력해야 하면 `node scripts/g2b/build-page.mjs && mkdir -p public && cp g2b-live.html public/index.html && cp netlify/robots.txt public/robots.txt` / `public`)
+4. **Deploy site**
+
+이후로는 PC 가 매일 아침 수집·분석하고 `collect-g2b.bat` 이 끝에
+`data/g2b/posts.json` 등을 커밋·푸시합니다. Netlify 는 `main` 에 푸시가
+올 때마다 저절로 다시 빌드합니다 — PC 가 켜져 있어야 화면이 갱신됩니다.
+
 ## 주의
 
-이 저장소는 **공개**입니다. `config/실적DB.md` 의 사업명·발주기관·계약금액이
-인터넷에서 보입니다.
+이 저장소는 **공개**입니다. `config/실적DB.md` 의 사업명·발주기관·계약금액,
+그리고 `data/g2b/posts.json` 등에 담긴 공고 목록·우리 자가채점 점수·경쟁사
+분석이 전부 Netlify 공개 URL 로 나갑니다. 검색엔진 색인은 막아 뒀지만
+(`robots.txt`, `<meta name="robots">`) 링크를 아는 사람은 누구나 볼 수 있습니다
+— 2026-08 사용자 결정입니다.

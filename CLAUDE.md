@@ -18,10 +18,18 @@
   한 줄로 부르기만 합니다(`코드받기.bat` → `getcode.bat`).
 - **바깥 라이브러리를 쓰지 않습니다.** node 기본 기능만 씁니다. HWP·HWPX·
   DOCX·PDF·ZIP·CFB 읽기와 DOCX 쓰기를 형식 문서만 보고 직접 만들었습니다.
-- **고치면 `node scripts/g2b/selftest.mjs` 를 돌립니다.** 66개 점검이 있습니다.
-- **이 저장소는 공개입니다.** `config/실적DB.md`(사업명·발주기관·계약금액)와
-  `config/회사정보.md` 가 인터넷에 보입니다 — 사용자가 알고 정한 것입니다.
-- `data/g2b/` 와 `g2b-live.html` 은 gitignore 입니다. PC 에만 있습니다.
+- **고치면 `node scripts/g2b/selftest.mjs` 를 돌립니다.** 실행할 때마다 몇 개인지
+  마지막 줄에 나옵니다.
+- **이 저장소는 공개이고, Netlify 로 배포됩니다(2026-08 사용자 결정).**
+  `config/실적DB.md`(사업명·발주기관·계약금액) · `config/회사정보.md` ·
+  `data/g2b/posts.json`·`docs.json`·`awards.json`(공고 목록·자가채점 점수·
+  경쟁사 분석)이 전부 공개 URL 로 나갑니다. 검색엔진 색인만 막아 뒀습니다
+  (`robots.txt`, `<meta name="robots">`) — 접근 자체는 막지 않습니다.
+  자세한 배포 절차는 `README.md` 의 "Netlify 배포" 참고.
+- `data/g2b/raw/` 와 `progress.json`, `g2b-live.html` 은 gitignore 입니다.
+  PC 에만 있습니다. `posts.json`·`docs.json`·`awards.json` 은 이제 git 이
+  관리합니다 — `collect-g2b.bat` 이 수집·분석·화면 생성 뒤 자동으로
+  커밋·푸시하고, Netlify 가 그 푸시를 받아 다시 빌드합니다.
 
 ## 구조
 
@@ -34,7 +42,8 @@
 판정    lib/require.mjs              참가자격·심사표를 뽑아냅니다
         lib/selfscore.mjs            정량 항목만 자가채점
         lib/records.mjs              config/실적DB.md 를 건별로 셉니다
-화면    g2b.html -> build-page.mjs -> g2b-live.html
+화면    g2b.html -> build-page.mjs -> g2b-live.html (PC)
+                                   -> public/index.html (Netlify, netlify.toml)
 ```
 
 키워드를 왜 그렇게 골랐는지는 `docs/키워드-기준.md` 에 있습니다.

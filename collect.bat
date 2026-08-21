@@ -31,8 +31,11 @@ ping -n 16 127.0.0.1 >nul
 rem -- pull latest code --
 rem `git pull --ff-only` fails forever once local and remote diverge, and
 rem the error only reaches the log. Matching the remote repairs a diverged
-rem clone on the next run. data\g2b\, g2b-live.html and logs\ are ignored
-rem by git, so they survive untouched.
+rem clone on the next run. logs\ and data\g2b\raw\ are ignored by git, so
+rem they survive untouched. data\g2b\posts.json (+docs.json, awards.json)
+rem ARE tracked now (2026-08, for the Netlify site) - this checkout resets
+rem them to the last published version, and collect-g2b.bat below
+rem regenerates and re-publishes them within the same run.
 set "BR=main"
 git fetch origin %BR% >> "%LOG%" 2>&1
 git checkout -f -B %BR% FETCH_HEAD >> "%LOG%" 2>&1 || echo [WARN] could not sync code >> "%LOG%"

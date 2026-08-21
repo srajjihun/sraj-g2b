@@ -797,5 +797,29 @@ function buildZip(files) {
     `로 stamp 를 갱신하세요 (새 hash: ${hash})`);
 }
 
+/* ⑭ Netlify 배포 — 빌드가 읽을 파일이 실제로 있고 형식이 맞는가.
+      data/g2b/posts.json 이 깨져 있거나 없으면 Netlify 빌드가 실패해
+      사이트가 통째로 멈춥니다. PC 에서만 도는 검사가 아니므로 여기서 미리 봅니다. */
+{
+  const { readFile } = await import("node:fs/promises");
+
+  const toml = await readFile(new URL("../../netlify.toml", import.meta.url), "utf8").catch(() => "");
+  check("netlify.toml 이 build-page.mjs 를 부른다", /build-page\.mjs/.test(toml));
+  check("netlify.toml 이 public 을 publish 로 쓴다", /publish\s*=\s*"public"/.test(toml));
+
+  let posts = null;
+  try {
+    posts = JSON.parse(await readFile(new URL("../../data/g2b/posts.json", import.meta.url), "utf8"));
+  } catch { /* 아래에서 실패로 처리 */ }
+  check("data/g2b/posts.json 이 있고 JSON 으로 읽힌다", posts !== null);
+  check("posts.json 에 posts·prespecs 배열이 있다",
+    Array.isArray(posts?.posts) && Array.isArray(posts?.prespecs), JSON.stringify(posts && Object.keys(posts)));
+
+  const html = await readFile(new URL("../../g2b.html", import.meta.url), "utf8");
+  check("검색엔진 색인을 막았다", /<meta name="robots" content="noindex/.test(html));
+  const robots = await readFile(new URL("../../netlify/robots.txt", import.meta.url), "utf8").catch(() => "");
+  check("netlify/robots.txt 가 있다", /Disallow:\s*\//.test(robots));
+}
+
 console.log(`\n[자체점검] 통과 ${pass} · 실패 ${fail}`);
 if (fail) process.exitCode = 1;
