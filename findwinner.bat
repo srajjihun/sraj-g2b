@@ -29,7 +29,14 @@ if errorlevel 1 goto :nonode
 
 %SAY% winner-head
 set /p "WORDS=  name: "
-if "%WORDS%"=="" goto :empty
+
+%SAY% winner-org
+set /p "ORG=  org: "
+
+if "%WORDS%"=="" if "%ORG%"=="" goto :empty
+
+set "ORGOPT="
+if not "%ORG%"=="" set "ORGOPT=--org %ORG%"
 
 %SAY% winner-months
 set /p "MONTHS=  months (enter = 24): "
@@ -53,7 +60,7 @@ if "%G2B_SERVICE_KEY%"=="" (
 
 if not exist "logs" mkdir "logs"
 %SAY% winner-run
-node "scripts\g2b\winner-find.mjs" %WORDS% --months %MONTHS% %SWEEP% > "logs\winner-find.txt" 2>&1
+node "scripts\g2b\winner-find.mjs" %WORDS% %ORGOPT% --months %MONTHS% %SWEEP% > "logs\winner-find.txt" 2>&1
 start notepad "logs\winner-find.txt"
 exit /b 0
 

@@ -903,6 +903,51 @@ function buildZip(files) {
     const two = spyOn();
     await quiet(() => main(["갑", "을", "--months", "2"], { fetchAll: two.fn }));
     check("찾는 말마다 따로 물어본다", two.calls.length === 4, `${two.calls.length}회`);
+
+    /* 발주기관으로 찾기 — "이 기관이 발주한 홍보 과업" 을 보려는 경우.
+       기관과 공고명을 같이 서버에 넘기면, 서버의 공고명 검색이 띄어쓰기를
+       놓칠 때 진짜 건이 빠집니다. 기관만 넘기고 공고명은 우리가 걸러야 합니다. */
+    const og = spyOn();
+    await quiet(() => main(["홍보", "--org", "경기창조경제혁신센터", "--months", "2"], { fetchAll: og.fn }));
+    check("기관을 서버에 넘긴다",
+      og.calls.every((p) => p.dminsttNm === "경기창조경제혁신센터"),
+      JSON.stringify(og.calls.map((p) => p.dminsttNm)));
+    check("기관과 공고명을 같이 넘기지 않는다",
+      og.calls.every((p) => p.bidNtceNm === undefined),
+      JSON.stringify(og.calls.map((p) => p.bidNtceNm)));
+    check("기관 검색은 달마다 한 번만 묻는다", og.calls.length === 2, `${og.calls.length}회`);
+    // --org 값이 찾는 말로 새면 "경기창조경제혁신센터" 가 공고명 조건이 되어 0건이 됩니다.
+    check("--org 값이 찾는 말로 새지 않는다",
+      !og.calls.some((p) => p.bidNtceNm === "경기창조경제혁신센터"));
+  }
+
+  /* 기관 + 공고명을 실제 응답으로 걸러내는지. */
+  {
+    const rows = async () => ([
+      { bidNtceNo: "A1", bidNtceOrd: "00", bidNtceNm: "2025 오픈이노베이션 스타트업 모집 홍보대행 용역",
+        dminsttNm: "경기창조경제혁신센터", bidwinnrNm: "가나기획", sucsfbidAmt: "50000000",
+        prtcptCnum: "5", opengDt: "2025-04-10 11:00:00" },
+      { bidNtceNo: "A2", bidNtceOrd: "00", bidNtceNm: "창업보육 공간 운영 용역",
+        dminsttNm: "경기창조경제혁신센터", bidwinnrNm: "다라산업", sucsfbidAmt: "120000000",
+        opengDt: "2025-06-02 11:00:00" },
+      { bidNtceNo: "A3", bidNtceOrd: "00", bidNtceNm: "스타트업 홍보영상 제작",
+        dminsttNm: "서울창업허브", ntceInsttNm: "서울창업허브", bidwinnrNm: "마바컴",
+        sucsfbidAmt: "30000000", opengDt: "2025-05-01 11:00:00" },
+    ]);
+    const byOrgWord = await quiet(() =>
+      main(["홍보", "--org", "경기창조경제혁신센터", "--months", "1"], { fetchAll: rows }));
+    check("기관+공고명 둘 다 맞는 건만 고른다",
+      byOrgWord.list.length === 1 && byOrgWord.list[0].bidNo.startsWith("A1"),
+      JSON.stringify(byOrgWord.list.map((x) => x.title)));
+    const byOrgOnly = await quiet(() =>
+      main(["--org", "경기창조경제혁신센터", "--months", "1"], { fetchAll: rows }));
+    check("기관만 지정하면 그 기관 전부를 고른다", byOrgOnly.list.length === 2,
+      JSON.stringify(byOrgOnly.list.map((x) => x.title)));
+    check("다른 기관 건은 안 섞인다",
+      !byOrgOnly.list.some((x) => /서울창업허브/.test(x.org)),
+      JSON.stringify(byOrgOnly.list.map((x) => x.org)));
+    check("기관 이름을 짧게 넣어도 걸린다",
+      (await quiet(() => main(["--org", "경기창조", "--months", "1"], { fetchAll: rows }))).list.length === 2);
   }
 }
 

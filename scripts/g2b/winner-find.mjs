@@ -20,6 +20,8 @@
 //   set G2B_SERVICE_KEY=공공데이터포털_일반인증키
 //   node scripts\g2b\winner-find.mjs 모두의창업
 //   node scripts\g2b\winner-find.mjs "모두의 창업" 창업홍보 --months 36
+//   node scripts\g2b\winner-find.mjs --org 경기창조경제혁신센터 홍보
+//   node scripts\g2b\winner-find.mjs --org 경기창조경제혁신센터        ← 그 기관 전부
 //   node scripts\g2b\winner-find.mjs 모두의창업 --sweep
 import { pathToFileURL } from "node:url";
 import { fetchAll } from "./lib/api.mjs";
@@ -73,13 +75,23 @@ export function matchTitle(title, words) {
   return words.some((x) => t.includes(norm(x)));
 }
 
-async function fetchMonth(op, w, name, call = fetchAll) {
+/**
+ * 한 달치를 조회합니다.
+ * @param ask 나라장터에 넘길 조건. { org } 또는 { name } 또는 {} (전수).
+ *
+ * 기관과 공고명을 같이 넘기지 않습니다. 나라장터의 공고명 검색은 띄어쓰기나
+ * 부분일치를 놓치는 일이 있어, 둘을 같이 넘기면 그 때문에 진짜 건이 빠집니다.
+ * 기관 쪽이 더 확실하고 건수도 적으니 기관만 넘기고 공고명은 우리가 걸러냅니다.
+ */
+async function fetchMonth(op, w, ask, call = fetchAll) {
   const params = {
     inqryDiv: 1, // 1 = 개찰일시 기준
     inqryBgnDt: w.bgn,
     inqryEndDt: w.end,
   };
-  if (name) params.bidNtceNm = name;
+  if (ask?.org) params.dminsttNm = ask.org;
+  else if (ask?.name) params.bidNtceNm = ask.name;
+  const name = ask?.org || ask?.name || null;
 
   return call("AWARD", op, params, {
     label: `${w.ym} ${name ? `"${name}"` : "전수"}`,
@@ -99,12 +111,17 @@ export async function main(argvIn = process.argv.slice(2), deps = {}) {
   const allKinds = argv.includes("--all");
   const mi = argv.indexOf("--months");
   const months = mi !== -1 && Number(argv[mi + 1]) > 0 ? Number(argv[mi + 1]) : DEFAULT_MONTHS;
-  const words = argv.filter((a, i) => !a.startsWith("--") && !(mi !== -1 && i === mi + 1));
+  const oi = argv.indexOf("--org");
+  const org = oi !== -1 ? (argv[oi + 1] ?? "") : "";
+  // 옵션 값으로 쓰인 것은 찾는 말에서 빼야 합니다.
+  const taken = new Set([mi + 1, oi + 1].filter((i) => i > 0));
+  const words = argv.filter((a, i) => !a.startsWith("--") && !taken.has(i));
 
-  if (!words.length) {
-    console.log("찾을 사업명을 적어 주세요.");
+  if (!words.length && !org) {
+    console.log("찾을 사업명이나 발주기관을 적어 주세요.");
     console.log('  예) node scripts\\g2b\\winner-find.mjs 모두의창업');
-    console.log('      node scripts\\g2b\\winner-find.mjs "모두의 창업" 창업홍보 --months 36');
+    console.log('      node scripts\\g2b\\winner-find.mjs --org 경기창조경제혁신센터 홍보');
+    console.log('      node scripts\\g2b\\winner-find.mjs --org 경기창조경제혁신센터');
     process.exitCode = 1;
     return;
   }
@@ -124,7 +141,8 @@ export async function main(argvIn = process.argv.slice(2), deps = {}) {
   const covered = [];
 
   console.log(`낙찰업체 찾기`);
-  console.log(`  찾는 말   ${words.join(" · ")}`);
+  if (org) console.log(`  발주기관  ${org}`);
+  console.log(`  찾는 말   ${words.length ? words.join(" · ") : "(제한 없음 — 이 기관의 낙찰 건 전부)"}`);
   console.log(`  기간      최근 ${months}개월 (${wins[0].ym} ~ ${wins[wins.length - 1].ym}) · 개찰일 기준`);
   console.log(`  업무구분  ${kinds.join(" · ")}`);
   console.log(`  방식      ${sweep ? "전수 조회 — 기간 전체를 받아 직접 걸러냅니다" : "빠른 조회 — 나라장터에 공고명을 넘깁니다"}`);
@@ -145,12 +163,16 @@ export async function main(argvIn = process.argv.slice(2), deps = {}) {
         stoppedShort = true;
         break outer;
       }
-      // 빠른 조회는 찾는 말마다 따로 물어봅니다(나라장터는 한 번에 한 이름만 받습니다).
-      const names = sweep ? [null] : words;
-      for (const name of names) {
+      /* 무엇으로 물어볼지.
+           전수     — 아무 조건 없이 기간 전체
+           기관 있음 — 기관으로 한 번만. 공고명은 우리가 걸러냅니다
+           기관 없음 — 찾는 말마다 따로 (나라장터는 한 번에 한 이름만 받습니다) */
+      const asks = sweep ? [{}] : org ? [{ org }] : words.map((name) => ({ name }));
+      for (const ask of asks) {
+        const name = ask.name ?? null;
         let items;
         try {
-          items = await fetchMonth(OPS[kind], w, name, call);
+          items = await fetchMonth(OPS[kind], w, ask, call);
         } catch (err) {
           if (isQuotaError(err)) { quotaHit = true; break outer; }
           console.log(`  [건너뜀] ${w.ym} ${kind}: ${err.message}`);
@@ -168,8 +190,10 @@ export async function main(argvIn = process.argv.slice(2), deps = {}) {
         for (const raw of items) {
           const it = normalizeAward(raw);
           if (!it.title) continue;
-          const t = norm(it.title);
-          if (!words.some((x) => t.includes(norm(x)))) continue;
+          // 기관을 지정했으면 수요기관·공고기관 어느 쪽이든 걸리면 인정합니다.
+          if (org && !(norm(it.org).includes(norm(org)) || norm(it.noticeOrg).includes(norm(org)))) continue;
+          // 찾는 말이 없으면(기관만 지정) 공고명은 안 봅니다.
+          if (words.length && !matchTitle(it.title, words)) continue;
           if (!hits.has(it.bidNo)) hits.set(it.bidNo, { ...it, kind });
         }
       }
@@ -205,7 +229,11 @@ export async function main(argvIn = process.argv.slice(2), deps = {}) {
   console.log(`${"─".repeat(70)}`);
 
   if (!list.length) {
-    console.log(`  "${words.join(" · ")}" 로는 나오지 않았습니다.\n`);
+    console.log(`  ${org ? `${org} · ` : ""}${words.join(" · ") || "(조건 없음)"} 로는 나오지 않았습니다.\n`);
+    if (org) {
+      console.log(`  기관 이름이 나라장터 표기와 다를 수 있습니다.`);
+      console.log(`  짧게 넣어 보세요 — "경기창조경제혁신센터" 대신 "경기창조" 처럼.\n`);
+    }
     if (!sweep) {
       console.log(`  다음을 해보세요.`);
       console.log(`   1) 나라장터의 공고명 검색이 띄어쓰기·부분일치를 못 잡는 경우가 있습니다.`);
