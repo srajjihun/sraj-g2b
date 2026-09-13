@@ -821,5 +821,62 @@ function buildZip(files) {
   check("netlify/robots.txt 가 있다", /Disallow:\s*\//.test(robots));
 }
 
+/* ⑮ 낙찰업체 찾기 — 공고명으로 선정기업을 조회하는 도구.
+      나라장터에 붙어야만 시험되는 규칙은 영영 시험하지 못하므로 가짜 응답을
+      끼워 넣어 "무엇을 골라내는가" 를 확인합니다. */
+{
+  const { main, norm, matchTitle, monthWindows } = await import("./winner-find.mjs");
+
+  check("띄어쓰기를 무시하고 맞춘다", norm("모두의 창업") === norm("모두의창업"));
+  check("괄호·가운뎃점도 무시한다", norm("(모두의) 창업·홍보") === norm("모두의창업홍보"));
+  check("공고명 부분일치를 잡는다",
+    matchTitle("2026년 모두의창업 홍보 대행 용역", ["모두의 창업"]));
+  check("엉뚱한 공고는 안 잡는다",
+    !matchTitle("청사 리모델링 공사", ["모두의 창업"]));
+  check("최근 N개월 창을 만든다", monthWindows(3, new Date("2026-09-13T00:00:00Z")).length === 3);
+  check("월 창이 오래된 순이다", (() => {
+    const w = monthWindows(3, new Date("2026-09-13T00:00:00Z"));
+    return w[0].ym === "2026-07" && w[2].ym === "2026-09";
+  })(), JSON.stringify(monthWindows(3, new Date("2026-09-13T00:00:00Z")).map((w) => w.ym)));
+  check("월 마지막 날까지 받는다",
+    monthWindows(1, new Date("2026-02-15T00:00:00Z"))[0].end === "202602282359",
+    monthWindows(1, new Date("2026-02-15T00:00:00Z"))[0].end);
+
+  // 가짜 나라장터 응답. 찾는 말이 든 건 둘, 아닌 건 하나.
+  const fake = async () => ([
+    { bidNtceNo: "2026001", bidNtceOrd: "00", bidNtceNm: "2026년 모두의 창업 홍보 대행 용역",
+      dminsttNm: "○○진흥원", bidwinnrNm: "가나기획", sucsfbidAmt: "180000000",
+      sucsfbidRate: "88.1", prtcptCnum: "7", opengDt: "2026-03-11 11:00:00" },
+    { bidNtceNo: "2026002", bidNtceOrd: "00", bidNtceNm: "모두의창업 온라인 홍보콘텐츠 제작",
+      dminsttNm: "○○진흥원", bidwinnrNm: "가나기획", sucsfbidAmt: "90000000",
+      sucsfbidRate: "91.0", prtcptCnum: "4", opengDt: "2026-05-20 11:00:00" },
+    { bidNtceNo: "2026003", bidNtceOrd: "00", bidNtceNm: "청사 환경정비 용역",
+      dminsttNm: "○○시", bidwinnrNm: "다라산업", sucsfbidAmt: "50000000",
+      opengDt: "2026-04-01 11:00:00" },
+  ]);
+
+  /* 이 도구는 사람이 읽을 리포트를 그대로 찍습니다. 검사 중에는 그 출력이
+     검사 결과를 덮어 버려 무엇이 통과했는지 안 보입니다 — 잠시 막습니다. */
+  const quiet = async (fn) => {
+    const log = console.log;
+    const w = process.stdout.write.bind(process.stdout);
+    console.log = () => {};
+    process.stdout.write = () => true;
+    try { return await fn(); } finally { console.log = log; process.stdout.write = w; }
+  };
+
+  const r = await quiet(() => main(["모두의 창업", "--months", "1"], { fetchAll: fake }));
+  check("찾는 말이 든 건만 고른다", r.list.length === 2, `${r.list.length}건`);
+  check("엉뚱한 건은 버린다", !r.list.some((x) => /환경정비/.test(x.title)));
+  check("낙찰업체를 읽는다", r.list.every((x) => x.corp === "가나기획"),
+    JSON.stringify(r.list.map((x) => x.corp)));
+  check("개찰일 최신순으로 세운다", r.list[0].date >= r.list[1].date,
+    JSON.stringify(r.list.map((x) => x.date)));
+  check("같은 공고를 두 번 세지 않는다", new Set(r.list.map((x) => x.bidNo)).size === r.list.length);
+  // 찾는 말이 하나도 안 걸릴 때 0건이라고 말해야 합니다 — 아무거나 보여주면 안 됩니다.
+  const r2 = await quiet(() => main(["없는사업명", "--months", "1"], { fetchAll: fake }));
+  check("없으면 0건이라고 말한다", r2.list.length === 0, `${r2.list.length}건`);
+}
+
 console.log(`\n[자체점검] 통과 ${pass} · 실패 ${fail}`);
 if (fail) process.exitCode = 1;
