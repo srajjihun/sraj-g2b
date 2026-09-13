@@ -115,7 +115,13 @@ export async function main(argvIn = process.argv.slice(2), deps = {}) {
   }
 
   const kinds = allKinds ? Object.keys(OPS) : ["용역"];
-  const wins = monthWindows(months);
+  /* 전수 조회는 최근 달부터 훑습니다.
+     기간 전체를 받으면 호출을 많이 써서 하루 한도에 걸려 중간에 멈춥니다.
+     오래된 달부터 훑으면 멈췄을 때 정작 최근 것을 못 본 채 끝납니다 —
+     "지금 누가 따갔나" 를 보려는 건데 거꾸로입니다.
+     빠른 조회는 호출이 적어 다 도니 보기 좋은 순서(오래된 순)를 그대로 둡니다. */
+  const wins = sweep ? monthWindows(months).reverse() : monthWindows(months);
+  const covered = [];
 
   console.log(`낙찰업체 찾기`);
   console.log(`  찾는 말   ${words.join(" · ")}`);
@@ -130,12 +136,13 @@ export async function main(argvIn = process.argv.slice(2), deps = {}) {
   // 나라장터가 공고명 검색을 무시하고 그냥 다 보내주는 경우를 잡기 위한 표시.
   let serverFiltered = 0;
   let serverIgnored = 0;
+  let stoppedShort = false;
 
   outer:
   for (const kind of kinds) {
     for (const w of wins) {
       if (callsUsed >= CALL_BUDGET) {
-        console.log(`\n[중단] 하루 호출 한도에 가까워져 멈췄습니다 (${callsUsed}회). 내일 다시 돌리거나 --months 를 줄여 주세요.`);
+        stoppedShort = true;
         break outer;
       }
       // 빠른 조회는 찾는 말마다 따로 물어봅니다(나라장터는 한 번에 한 이름만 받습니다).
@@ -166,10 +173,26 @@ export async function main(argvIn = process.argv.slice(2), deps = {}) {
           if (!hits.has(it.bidNo)) hits.set(it.bidNo, { ...it, kind });
         }
       }
+      covered.push(w.ym);
       process.stdout.write(`\r  조회 중… ${w.ym} · 받은 ${seen}건 · 걸린 ${hits.size}건 · 호출 ${callsUsed}회   `);
     }
   }
   process.stdout.write("\n");
+
+  if (stoppedShort || quotaHit) {
+    const done = new Set(covered);
+    const missed = wins.map((w) => w.ym).filter((ym) => !done.has(ym)).sort();
+    console.log(`\n[중단] 하루 호출 한도에 가까워져 멈췄습니다 (${callsUsed}회).`);
+    if (covered.length) {
+      const c = [...covered].sort();
+      console.log(`       본 기간    ${c[0]} ~ ${c[c.length - 1]} (${covered.length}개월)`);
+    }
+    if (missed.length) {
+      console.log(`       못 본 기간 ${missed[0]} ~ ${missed[missed.length - 1]} (${missed.length}개월)`);
+      console.log(`       내일 --months ${missed.length + covered.length} 로 다시 돌리거나,`);
+      console.log(`       빠른 조회로 바꾸면 한 번에 끝납니다(호출을 거의 안 씁니다).`);
+    }
+  }
 
   if (quotaHit) {
     console.log(`\n[안내] 나라장터 하루 호출 한도를 다 썼습니다. 자정이 지나면 풀립니다.`);

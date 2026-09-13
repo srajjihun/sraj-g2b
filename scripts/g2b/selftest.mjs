@@ -876,6 +876,34 @@ function buildZip(files) {
   // 찾는 말이 하나도 안 걸릴 때 0건이라고 말해야 합니다 — 아무거나 보여주면 안 됩니다.
   const r2 = await quiet(() => main(["없는사업명", "--months", "1"], { fetchAll: fake }));
   check("없으면 0건이라고 말한다", r2.list.length === 0, `${r2.list.length}건`);
+
+  /* 전수 조회는 최근 달부터 훑어야 합니다. 호출 한도에 걸려 중간에 멈추면
+     오래된 달부터 훑은 경우 정작 최근 것을 못 본 채 끝나기 때문입니다. */
+  {
+    const spyOn = () => {
+      const calls = [];
+      return { calls, fn: async (_svc, _op, params) => { calls.push(params); return []; } };
+    };
+    const sw = spyOn();
+    await quiet(() => main(["아무거나", "--months", "3", "--sweep"], { fetchAll: sw.fn }));
+    const swYm = sw.calls.map((p) => p.inqryBgnDt.slice(0, 6));
+    check("전수 조회는 최근 달부터 훑는다", swYm[0] > swYm[swYm.length - 1], swYm.join(" → "));
+    check("전수 조회는 공고명을 서버에 넘기지 않는다",
+      sw.calls.every((p) => p.bidNtceNm === undefined),
+      JSON.stringify(sw.calls.map((p) => p.bidNtceNm)));
+
+    const fa = spyOn();
+    await quiet(() => main(["아무거나", "--months", "3"], { fetchAll: fa.fn }));
+    const faYm = fa.calls.map((p) => p.inqryBgnDt.slice(0, 6));
+    check("빠른 조회는 오래된 달부터 (읽기 좋은 순서)", faYm[0] < faYm[faYm.length - 1], faYm.join(" → "));
+    check("빠른 조회는 공고명을 서버에 넘긴다",
+      fa.calls.every((p) => p.bidNtceNm === "아무거나"),
+      JSON.stringify(fa.calls.map((p) => p.bidNtceNm)));
+    // 찾는 말이 둘이면 달마다 두 번 물어봅니다 (나라장터는 한 번에 한 이름만 받습니다).
+    const two = spyOn();
+    await quiet(() => main(["갑", "을", "--months", "2"], { fetchAll: two.fn }));
+    check("찾는 말마다 따로 물어본다", two.calls.length === 4, `${two.calls.length}회`);
+  }
 }
 
 console.log(`\n[자체점검] 통과 ${pass} · 실패 ${fail}`);
