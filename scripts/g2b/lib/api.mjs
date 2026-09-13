@@ -15,6 +15,38 @@ const HOSTS = {
   AWARD: "https://apis.data.go.kr/1230000/as/ScsbidInfoService",
 };
 
+/* 공공데이터포털은 **서비스마다 활용신청을 따로** 받습니다.
+   입찰공고를 신청해 뒀어도 낙찰정보는 따로 신청하지 않으면
+   SERVICE_KEY_IS_NOT_REGISTERED_ERROR 가 납니다. 같은 인증키인데도 그렇습니다.
+
+   예전에는 그 영문 오류를 로그에 그대로 흘렸습니다. 무슨 뜻인지, 무엇을 해야
+   하는지 알 수가 없어서 "작년 수행업체 0건" 의 원인을 오래 못 찾았습니다.
+   그래서 어느 서비스가 막힌 것인지 이름과 신청 주소까지 적어 줍니다. */
+const SERVICE_INFO = {
+  BID: { name: "입찰공고정보서비스" },
+  PRESPEC: { name: "공공기관 사전규격정보서비스" },
+  AWARD: { name: "낙찰정보서비스" },
+};
+
+/** 활용신청이 안 된 서비스일 때 사람이 읽고 바로 조치할 수 있는 안내. */
+function notRegisteredMessage(service) {
+  const info = SERVICE_INFO[service] ?? { name: service };
+  return [
+    `나라장터 "${info.name}" 는 아직 활용신청이 안 돼 있습니다.`,
+    ``,
+    `공공데이터포털은 서비스마다 신청을 따로 받습니다. 입찰공고가 되는데`,
+    `이것만 안 되는 것은 인증키가 틀린 게 아니라 이 서비스를 신청하지`,
+    `않았기 때문입니다.`,
+    ``,
+    `  1. https://www.data.go.kr 로그인`,
+    `  2. "조달청_${info.name}" 검색`,
+    `  3. [활용신청] 누르고 사유 적어 제출`,
+    `  4. 보통 즉시 승인됩니다. 마이페이지 > 오픈API > 활용신청 현황에서 확인`,
+    ``,
+    `승인된 뒤 다시 실행해 주세요. 인증키는 지금 쓰는 것을 그대로 씁니다.`,
+  ].join("\n");
+}
+
 // 개발계정은 오퍼레이션당 하루 1,000회 제한. 페이지당 100건이 안전선으로 확인됐다.
 // (999/1000 은 "입력범위값 초과 에러(07)" 로 거부된다)
 export const ROWS_PER_PAGE = 100;
@@ -99,7 +131,7 @@ function extractItems(body) {
 
 // 응답 본문을 해석해 { items, totalCount } 로 돌려준다.
 // 오류는 세 가지 형태로 오므로 모두 처리한다.
-export function parseResponse(text, label) {
+export function parseResponse(text, label, service) {
   let json;
   try {
     json = JSON.parse(text);
@@ -111,7 +143,25 @@ export function parseResponse(text, label) {
   // ① 포털 게이트웨이 오류 (인증키 문제, 일일 트래픽 초과 등)
   const gw = json.OpenAPI_ServiceResponse?.cmmMsgHeader;
   if (gw) {
-    throw new Error(`${label} 인증/게이트웨이 오류: ${gw.errMsg} (${gw.returnAuthMsg ?? ""})`);
+    const code = String(gw.returnReasonCode ?? "").trim();
+    const auth = String(gw.returnAuthMsg ?? "");
+    // 30 = 등록되지 않은 서비스키, 20 = 서비스 접근거부(승인 대기·해지)
+    if (/NOT_REGISTERED/i.test(auth) || code === "30" || /ACCESS_DENIED/i.test(auth) || code === "20") {
+      const err = new Error(notRegisteredMessage(service));
+      err.notRegistered = true;
+      err.service = service;
+      throw err;
+    }
+    // 22 = 일일 트래픽 초과
+    if (/LIMITED_NUMBER_OF_SERVICE_REQUESTS/i.test(auth) || code === "22") {
+      const err = new Error(
+        `나라장터 하루 호출 한도를 다 썼습니다 (${SERVICE_INFO[service]?.name ?? service}).\n` +
+        `자정이 지나면 풀립니다.`
+      );
+      err.dailyQuota = true;
+      throw err;
+    }
+    throw new Error(`${label} 인증/게이트웨이 오류: ${gw.errMsg} (${auth})`);
   }
 
   // ② 나라장터 백엔드 오류 (입력범위값 초과 등)
@@ -192,7 +242,7 @@ async function fetchPage(service, operation, params, label) {
       await sleep(RETRY_BASE_MS * 2 ** attempt);
       continue;
     }
-    return parseResponse(text, label); // 여기서 나는 오류는 재시도 대상이 아니다
+    return parseResponse(text, label, service); // 여기서 나는 오류는 재시도 대상이 아니다
   }
   throw lastErr;
 }

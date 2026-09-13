@@ -155,6 +155,7 @@ export async function main(argvIn = process.argv.slice(2), deps = {}) {
   let serverFiltered = 0;
   let serverIgnored = 0;
   let stoppedShort = false;
+  let notRegistered = null;
 
   outer:
   for (const kind of kinds) {
@@ -175,6 +176,9 @@ export async function main(argvIn = process.argv.slice(2), deps = {}) {
           items = await fetchMonth(OPS[kind], w, ask, call);
         } catch (err) {
           if (isQuotaError(err)) { quotaHit = true; break outer; }
+          /* 활용신청이 안 된 서비스면 달마다 똑같이 실패합니다.
+             24개월을 헛돌며 같은 오류를 24번 찍을 이유가 없습니다. */
+          if (err.notRegistered) { notRegistered = err.message; break outer; }
           console.log(`  [건너뜀] ${w.ym} ${kind}: ${err.message}`);
           continue;
         }
@@ -202,6 +206,15 @@ export async function main(argvIn = process.argv.slice(2), deps = {}) {
     }
   }
   process.stdout.write("\n");
+
+  if (notRegistered) {
+    console.log(`\n${"─".repeat(70)}`);
+    console.log(notRegistered);
+    console.log(`${"─".repeat(70)}`);
+    console.log(`\n이 조회는 낙찰정보서비스를 씁니다. 입찰공고 수집과는 다른 서비스입니다.`);
+    console.log(`그래서 공고는 잘 모이는데 "누가 따갔나" 만 안 나옵니다.`);
+    return { list: [], seen, calls: callsUsed, quotaHit, notRegistered };
+  }
 
   if (stoppedShort || quotaHit) {
     const done = new Set(covered);

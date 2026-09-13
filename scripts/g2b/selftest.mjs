@@ -821,6 +821,35 @@ function buildZip(files) {
   check("netlify/robots.txt 가 있다", /Disallow:\s*\//.test(robots));
 }
 
+/* ⑯ 나라장터 오류 분류 — 무엇을 해야 하는지 말해 주는가.
+      "SERVICE_KEY_IS_NOT_REGISTERED_ERROR" 를 로그에 그대로 흘리면
+      사용자는 무슨 뜻인지 알 수 없습니다. 실제로 "작년 수행업체 0건" 의
+      원인을 오래 못 찾았습니다. */
+{
+  const { parseResponse } = await import("./lib/api.mjs");
+  const gw = (auth, code) => JSON.stringify({
+    OpenAPI_ServiceResponse: { cmmMsgHeader: { errMsg: "SERVICE ERROR", returnAuthMsg: auth, returnReasonCode: code } },
+  });
+  const grab = (text, service) => {
+    try { parseResponse(text, "시험", service); return null; } catch (e) { return e; }
+  };
+
+  const nr = grab(gw("SERVICE_KEY_IS_NOT_REGISTERED_ERROR", "30"), "AWARD");
+  check("미신청 오류를 알아본다", nr?.notRegistered === true);
+  check("어느 서비스인지 이름으로 말한다", /낙찰정보서비스/.test(nr?.message ?? ""), nr?.message?.slice(0, 40));
+  check("무엇을 해야 하는지 적는다", /활용신청/.test(nr?.message ?? "") && /data\.go\.kr/.test(nr?.message ?? ""));
+  check("인증키 탓이 아니라고 밝힌다", /인증키가 틀린 게 아니/.test(nr?.message ?? ""));
+  check("서비스마다 이름이 다르게 나온다",
+    /입찰공고정보서비스/.test(grab(gw("SERVICE_KEY_IS_NOT_REGISTERED_ERROR", "30"), "BID")?.message ?? ""));
+  check("접근거부도 같이 잡는다", grab(gw("SERVICE_ACCESS_DENIED_ERROR", "20"), "AWARD")?.notRegistered === true);
+
+  const q = grab(gw("LIMITED_NUMBER_OF_SERVICE_REQUESTS_EXCEEDS_ERROR", "22"), "AWARD");
+  check("하루 한도 초과는 따로 구분한다", q?.dailyQuota === true && !q?.notRegistered, q?.message?.slice(0, 30));
+  // 모르는 오류를 미신청으로 둘러대면 엉뚱한 안내를 하게 됩니다.
+  const other = grab(gw("SOMETHING_ELSE", "99"), "AWARD");
+  check("모르는 오류는 미신청으로 둘러대지 않는다", !other?.notRegistered && !other?.dailyQuota, other?.message);
+}
+
 /* ⑮ 낙찰업체 찾기 — 공고명으로 선정기업을 조회하는 도구.
       나라장터에 붙어야만 시험되는 규칙은 영영 시험하지 못하므로 가짜 응답을
       끼워 넣어 "무엇을 골라내는가" 를 확인합니다. */
@@ -948,6 +977,20 @@ function buildZip(files) {
       JSON.stringify(byOrgOnly.list.map((x) => x.org)));
     check("기관 이름을 짧게 넣어도 걸린다",
       (await quiet(() => main(["--org", "경기창조", "--months", "1"], { fetchAll: rows }))).list.length === 2);
+
+    /* 활용신청 안 된 서비스 — 공공데이터포털은 서비스마다 신청을 따로 받습니다.
+       입찰공고는 되는데 낙찰정보만 안 되는 상황이 실제로 있었고, 영문 오류만
+       로그에 흘러 원인을 오래 못 찾았습니다. 즉시 멈추고 안내해야 합니다. */
+    let tries = 0;
+    const denied = async () => {
+      tries += 1;
+      const e = new Error("(안내문)");
+      e.notRegistered = true;
+      throw e;
+    };
+    const nr = await quiet(() => main(["홍보", "--months", "24"], { fetchAll: denied }));
+    check("활용신청 안 됐으면 즉시 멈춘다", tries === 1, `${tries}번 시도`);
+    check("미신청을 결과에 표시한다", !!nr.notRegistered && nr.list.length === 0);
   }
 }
 
