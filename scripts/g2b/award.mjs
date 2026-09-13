@@ -79,7 +79,11 @@ async function collectMonth(ym, store, config) {
   let seen = 0;
 
   const items = await fetchAll("AWARD", AWARD_OP, {
-    inqryDiv: 1, // 1 = 개찰일시 기준
+    /* 3 = 개찰일시. 예전에는 1 을 쓰면서 주석에 "개찰일시" 라고 적어 뒀는데
+       1 은 등록일시입니다(docs/g2b-design.md 3.3). 낙찰정보 등록은 개찰보다
+       최대 8~9개월 늦으므로, 작년 1년치 백필을 등록일 기준으로 훑으면
+       작년에 개찰된 건을 제대로 못 모읍니다. */
+    inqryDiv: 3,
     inqryBgnDt: w.bgn,
     inqryEndDt: w.end,
   }, {

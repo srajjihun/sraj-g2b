@@ -29,12 +29,27 @@ import { pathToFileURL } from "node:url";
 import { fetchAll } from "./lib/api.mjs";
 import { normalizeAward } from "./lib/normalize.mjs";
 
-// 낙찰목록현황. 업무구분별로 오퍼레이션이 다릅니다.
+/* 낙찰 쪽은 오퍼레이션이 두 갈래입니다. 하나만 보면 구멍이 납니다.
+     낙찰목록현황 — 최종 낙찰자·낙찰률·참가업체수. 계약이 확정된 뒤 들어옵니다.
+     개찰결과목록 — 진행구분(유찰/개찰완료/재입찰)과 개찰에 들어온 업체.
+                    협상에의한계약은 낙찰 확정이 늦어 개찰결과에만 있는 때가 있습니다.
+   docs/g2b-design.md 3.3 에 실물로 확인해 적어둔 내용인데 코드는 낙찰목록만
+   보고 있었습니다. */
 const OPS = {
-  용역: "getScsbidListSttusServcPPSSrch",
-  물품: "getScsbidListSttusThngPPSSrch",
-  공사: "getScsbidListSttusCnstwkPPSSrch",
+  용역: { 낙찰: "getScsbidListSttusServcPPSSrch", 개찰: "getOpengResultListInfoServcPPSSrch" },
+  물품: { 낙찰: "getScsbidListSttusThngPPSSrch", 개찰: "getOpengResultListInfoThngPPSSrch" },
+  공사: { 낙찰: "getScsbidListSttusCnstwkPPSSrch", 개찰: "getOpengResultListInfoCnstwkPPSSrch" },
 };
+
+/* 조회 기준일(inqryDiv): 1=등록일시 2=공고일시 3=개찰일시 4=공고번호
+   낙찰정보 등록은 개찰보다 최대 8~9개월 늦습니다(설계문서 실측: 개찰 2025-11-10 →
+   등록 2026-08-11). 한 기준만 쓰면 구멍이 납니다 — 개찰일로만 보면 아직 등록 안 된
+   최근 건을, 등록일로만 보면 옛날에 개찰된 건을 놓칩니다.
+   예전 코드는 1(등록일시)을 쓰면서 주석에 "개찰일시" 라고 적어 뒀습니다. */
+const BASES = [
+  { div: 3, label: "개찰일" },
+  { div: 1, label: "등록일" },
+];
 
 const DEFAULT_MONTHS = 24;
 // 하루 한도(오퍼레이션당 1,000회)에 여유를 둡니다.
@@ -72,6 +87,36 @@ function isQuotaError(err) {
  * @param name 나라장터에 넘길 공고명. null 이면 전수(기간 전체)로 받습니다.
  */
 /**
+ * 개찰결과 목록 한 건을 읽습니다.
+ *
+ * 낙찰목록현황과 필드가 다릅니다. 업체 정보가
+ *   opengCorpInfo = "업체명^사업자번호^대표자^투찰금액^투찰율"
+ * 한 칸에 붙어 옵니다. 협상에의한계약은 투찰금액·투찰율이 비어 옵니다.
+ *
+ * 여기서 나온 업체는 **개찰에 들어온 업체**이지 낙찰자로 확정된 것이 아닙니다.
+ * 출처를 표시해 화면에서 구분합니다 — 확정 아닌 것을 확정처럼 보여주면
+ * 엉뚱한 업체를 경쟁사로 찍게 됩니다.
+ */
+function readOpengResult(raw) {
+  const t = (v) => String(v ?? "").trim();
+  const parts = t(raw.opengCorpInfo).split("^");
+  const dt = t(raw.opengDt) || t(raw.rlOpengDt);
+  return {
+    bidNo: `${t(raw.bidNtceNo)}-${t(raw.bidNtceOrd) || "000"}`,
+    title: t(raw.bidNtceNm),
+    org: t(raw.dminsttNm) || t(raw.ntceInsttNm),
+    noticeOrg: t(raw.ntceInsttNm),
+    date: dt.slice(0, 10),
+    corp: parts[0] || "",
+    bizno: parts[1] || "",
+    amount: Number(String(parts[3] ?? "").replace(/[^\d]/g, "")) || 0,
+    rate: Number(String(parts[4] ?? "").replace(/[^\d.]/g, "")) || null,
+    bidders: Number(t(raw.prtcptCnum)) || null,
+    progress: t(raw.progrsDivCdNm), // 유찰 / 개찰완료 / 재입찰
+  };
+}
+
+/**
  * 공고명이 찾는 말을 품고 있는지. 띄어쓰기 차이는 무시합니다.
  *
  * 기본은 **둘 다**(AND) 입니다. "모두의 홍보" 라고 적으면 두 말이 다 든 공고만
@@ -95,9 +140,9 @@ export function matchTitle(title, words, mode = "and") {
  * 부분일치를 놓치는 일이 있어, 둘을 같이 넘기면 그 때문에 진짜 건이 빠집니다.
  * 기관 쪽이 더 확실하고 건수도 적으니 기관만 넘기고 공고명은 우리가 걸러냅니다.
  */
-async function fetchMonth(op, w, ask, call = fetchAll) {
+async function fetchMonth(op, w, ask, div, call = fetchAll) {
   const params = {
-    inqryDiv: 1, // 1 = 개찰일시 기준
+    inqryDiv: div,
     inqryBgnDt: w.bgn,
     inqryEndDt: w.end,
   };
@@ -173,6 +218,7 @@ export async function main(argvIn = process.argv.slice(2), deps = {}) {
   let serverIgnored = 0;
   let stoppedShort = false;
   let notRegistered = null;
+  const failed = new Set();
 
   outer:
   for (const kind of kinds) {
@@ -194,36 +240,58 @@ export async function main(argvIn = process.argv.slice(2), deps = {}) {
         : org ? [{ org }]
         : mode === "or" ? words.map((name) => ({ name }))
         : [{ name: longest }];
-      for (const ask of asks) {
-        const name = ask.name ?? null;
-        let items;
-        try {
-          items = await fetchMonth(OPS[kind], w, ask, call);
-        } catch (err) {
-          if (isQuotaError(err)) { quotaHit = true; break outer; }
-          /* 활용신청이 안 된 서비스면 달마다 똑같이 실패합니다.
-             24개월을 헛돌며 같은 오류를 24번 찍을 이유가 없습니다. */
-          if (err.notRegistered) { notRegistered = err.message; break outer; }
-          console.log(`  [건너뜀] ${w.ym} ${kind}: ${err.message}`);
-          continue;
-        }
-        seen += items.length;
+      /* 어느 오퍼레이션·어느 기준일로 볼지.
+         빠른 조회는 낙찰·개찰 두 갈래를 개찰일·등록일 두 기준으로 다 봅니다
+         (달마다 최대 4회 — 24개월이면 96회, 하루 한도에 한참 못 미칩니다).
+         전수 조회는 한 번에 수십 페이지를 받으므로 기준일을 개찰일 하나로
+         줄입니다. 등록이 늦은 건은 빠른 조회로 찾으셔야 합니다. */
+      const bases = sweep ? [BASES[0]] : BASES;
+      for (const src of ["낙찰", "개찰"]) {
+        for (const base of bases) {
+          for (const ask of asks) {
+            if (callsUsed >= CALL_BUDGET) { stoppedShort = true; break outer; }
+            const name = ask.name ?? null;
+            let items;
+            try {
+              items = await fetchMonth(OPS[kind][src], w, ask, base.div, call);
+            } catch (err) {
+              if (isQuotaError(err)) { quotaHit = true; break outer; }
+              /* 활용신청이 안 된 서비스면 달마다 똑같이 실패합니다.
+                 24개월을 헛돌며 같은 오류를 24번 찍을 이유가 없습니다. */
+              if (err.notRegistered) { notRegistered = err.message; break outer; }
+              // 개찰결과 오퍼레이션 이름은 용역만 실물로 확인됐습니다. 물품·공사에서
+              // 틀리면 그 갈래만 조용히 건너뛰고 낙찰목록 결과는 살립니다.
+              failed.add(`${kind}·${src}`);
+              continue;
+            }
+            seen += items.length;
 
-        // 서버가 공고명 검색을 실제로 걸러 줬는지 확인합니다. 무시했다면 우리가 거른
-        // 결과만 맞고, 호출은 전수만큼 쓰게 되므로 그 사실을 알려야 합니다.
-        if (name && items.length) {
-          const ok = items.filter((raw) => norm(normalizeAward(raw).title).includes(norm(name))).length;
-          if (ok) serverFiltered += 1; else serverIgnored += 1;
-        }
+            // 서버가 공고명 검색을 실제로 걸러 줬는지 확인합니다. 무시했다면 우리가 거른
+            // 결과만 맞고, 호출은 전수만큼 쓰게 되므로 그 사실을 알려야 합니다.
+            if (name && items.length) {
+              const ok = items.filter((raw) => norm(String(raw.bidNtceNm ?? "")).includes(norm(name))).length;
+              if (ok) serverFiltered += 1; else serverIgnored += 1;
+            }
 
-        for (const raw of items) {
-          const it = normalizeAward(raw);
-          if (!it.title) continue;
-          // 기관을 지정했으면 수요기관·공고기관 어느 쪽이든 걸리면 인정합니다.
-          if (org && !(norm(it.org).includes(norm(org)) || norm(it.noticeOrg).includes(norm(org)))) continue;
-          // 찾는 말이 없으면(기관만 지정) 공고명은 안 봅니다.
-          if (words.length && !matchTitle(it.title, words, mode)) continue;
-          if (!hits.has(it.bidNo)) hits.set(it.bidNo, { ...it, kind });
+            for (const raw of items) {
+              const it = src === "낙찰" ? normalizeAward(raw) : readOpengResult(raw);
+              if (!it.title) continue;
+              // 기관을 지정했으면 수요기관·공고기관 어느 쪽이든 걸리면 인정합니다.
+              if (org && !(norm(it.org).includes(norm(org)) || norm(it.noticeOrg).includes(norm(org)))) continue;
+              // 찾는 말이 없으면(기관만 지정) 공고명은 안 봅니다.
+              if (words.length && !matchTitle(it.title, words, mode)) continue;
+              const prev = hits.get(it.bidNo);
+              /* 같은 공고가 두 갈래에 다 있으면 낙찰목록을 씁니다 —
+                 그쪽이 확정 정보입니다. 개찰결과에만 있는 값(진행구분·참가업체수)은
+                 가져와 붙입니다. */
+              if (!prev) hits.set(it.bidNo, { ...it, kind, src });
+              else if (prev.src === "개찰" && src === "낙찰") {
+                hits.set(it.bidNo, { ...it, kind, src, progress: prev.progress, bidders: it.bidders ?? prev.bidders });
+              } else if (prev.src === "낙찰" && src === "개찰") {
+                hits.set(it.bidNo, { ...prev, progress: prev.progress || it.progress, bidders: prev.bidders ?? it.bidders });
+              }
+            }
+          }
         }
       }
       covered.push(w.ym);
@@ -289,10 +357,15 @@ export async function main(argvIn = process.argv.slice(2), deps = {}) {
   }
 
   for (const it of list) {
-    console.log(`\n  ${it.date || "개찰일 미상"}  [${it.kind}]`);
+    console.log(`\n  ${it.date || "개찰일 미상"}  [${it.kind}]${it.progress ? ` [${it.progress}]` : ""}`);
     console.log(`  ${it.title}`);
     console.log(`    발주  ${it.org || "—"}${it.noticeOrg && it.noticeOrg !== it.org ? ` (공고 ${it.noticeOrg})` : ""}`);
-    console.log(`    선정  ${it.corp || "—"}${it.bizno ? ` · 사업자 ${it.bizno}` : ""}`);
+    /* 낙찰목록에서 온 것만 "선정" 입니다. 개찰결과의 업체는 개찰에 들어온
+       업체이지 확정 낙찰자가 아닙니다 — 확정 아닌 것을 확정처럼 적으면
+       엉뚱한 업체를 경쟁사로 찍게 됩니다. */
+    const label = it.src === "낙찰" ? "선정" : "개찰참가";
+    console.log(`    ${label}  ${it.corp || "—"}${it.bizno ? ` · 사업자 ${it.bizno}` : ""}`
+      + (it.src === "개찰" ? `  ← 개찰결과 기준 (낙찰 확정 정보 아님)` : ""));
     const bits = [`계약 ${억(it.amount)}`];
     if (it.rate) bits.push(`낙찰률 ${it.rate}%`);
     if (it.bidders) bits.push(`${it.bidders}곳 투찰`);
@@ -305,18 +378,25 @@ export async function main(argvIn = process.argv.slice(2), deps = {}) {
     const byCorp = new Map();
     for (const it of list) {
       if (!it.corp) continue;
+      if (it.src !== "낙찰") continue; // 확정된 것만 셉니다
       const r = byCorp.get(it.corp) ?? { n: 0, sum: 0 };
       r.n += 1; r.sum += it.amount || 0;
       byCorp.set(it.corp, r);
     }
     const rows = [...byCorp.entries()].sort((a, b) => b[1].n - a[1].n || b[1].sum - a[1].sum);
     if (rows.length) {
-      console.log(`\n\n■ 업체별 정리 — 누가 몇 건 가져갔나`);
+      console.log(`\n\n■ 업체별 정리 — 누가 몇 건 가져갔나 (낙찰 확정 건만)`);
       console.log(`${"─".repeat(70)}`);
       for (const [corp, r] of rows) {
         console.log(`  ${String(r.n).padStart(2)}건  ${억(r.sum).padStart(7)}  ${corp}`);
       }
     }
+  }
+
+  if (failed.size) {
+    console.log(`\n\n[참고] 다음 갈래는 조회가 안 됐습니다: ${[...failed].join(" · ")}`);
+    console.log(`       개찰결과 오퍼레이션 이름은 용역만 실물로 확인돼 있습니다.`);
+    console.log(`       나머지 갈래의 결과는 위에 그대로 들어 있습니다.`);
   }
 
   if (serverIgnored && !serverFiltered) {

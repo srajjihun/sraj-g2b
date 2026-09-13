@@ -918,11 +918,15 @@ function buildZip(files) {
 
   /* 전수 조회는 최근 달부터 훑어야 합니다. 호출 한도에 걸려 중간에 멈추면
      오래된 달부터 훑은 경우 정작 최근 것을 못 본 채 끝나기 때문입니다. */
+  /* 무엇을 어느 오퍼레이션에 어떤 조건으로 물었는지 기록하는 가짜 fetchAll.
+     아래 두 블록에서 같이 쓰므로 블록 바깥에 둡니다. */
+  const spyOn = () => {
+    const calls = [];
+    const ops = [];
+    return { calls, ops, fn: async (_svc, op, params) => { ops.push(op); calls.push(params); return []; } };
+  };
+
   {
-    const spyOn = () => {
-      const calls = [];
-      return { calls, fn: async (_svc, _op, params) => { calls.push(params); return []; } };
-    };
     const sw = spyOn();
     await quiet(() => main(["아무거나", "--months", "3", "--sweep"], { fetchAll: sw.fn }));
     const swYm = sw.calls.map((p) => p.inqryBgnDt.slice(0, 6));
@@ -938,18 +942,22 @@ function buildZip(files) {
     check("빠른 조회는 공고명을 서버에 넘긴다",
       fa.calls.every((p) => p.bidNtceNm === "아무거나"),
       JSON.stringify(fa.calls.map((p) => p.bidNtceNm)));
-    /* AND 가 기본이면 서버에는 한 번만 물어봅니다 — 가장 긴 말로 좁히고
-       나머지는 우리가 걸러냅니다. 호출도 절반으로 줄어듭니다. */
+    /* AND 가 기본이면 이름은 하나만 넘깁니다 — 가장 긴 말로 좁히고 나머지는
+       우리가 걸러냅니다. 달마다 드는 호출은 (갈래 2) × (기준일 2) = 4회입니다. */
     const two = spyOn();
     await quiet(() => main(["모두의", "홍보", "--months", "2"], { fetchAll: two.fn }));
-    check("AND 면 달마다 한 번만 묻는다", two.calls.length === 2, `${two.calls.length}회`);
+    check("AND 면 이름을 하나만 넘긴다",
+      new Set(two.calls.map((p) => p.bidNtceNm)).size === 1, JSON.stringify([...new Set(two.calls.map((p) => p.bidNtceNm))]));
     check("가장 긴 말을 서버에 넘긴다",
       two.calls.every((p) => p.bidNtceNm === "모두의"),
-      JSON.stringify(two.calls.map((p) => p.bidNtceNm)));
+      JSON.stringify([...new Set(two.calls.map((p) => p.bidNtceNm))]));
+    check("달마다 두 갈래 × 두 기준일을 본다", two.calls.length === 2 * 2 * 2, `${two.calls.length}회`);
     // OR 는 말마다 따로 물어봅니다 (나라장터는 한 번에 한 이름만 받습니다).
     const orSpy = spyOn();
     await quiet(() => main(["모두의", "홍보", "--or", "--months", "2"], { fetchAll: orSpy.fn }));
-    check("--or 면 말마다 따로 묻는다", orSpy.calls.length === 4, `${orSpy.calls.length}회`);
+    check("--or 면 말마다 따로 묻는다",
+      new Set(orSpy.calls.map((p) => p.bidNtceNm)).size === 2,
+      JSON.stringify([...new Set(orSpy.calls.map((p) => p.bidNtceNm))]));
 
     /* 발주기관으로 찾기 — "이 기관이 발주한 홍보 과업" 을 보려는 경우.
        기관과 공고명을 같이 서버에 넘기면, 서버의 공고명 검색이 띄어쓰기를
@@ -962,7 +970,8 @@ function buildZip(files) {
     check("기관과 공고명을 같이 넘기지 않는다",
       og.calls.every((p) => p.bidNtceNm === undefined),
       JSON.stringify(og.calls.map((p) => p.bidNtceNm)));
-    check("기관 검색은 달마다 한 번만 묻는다", og.calls.length === 2, `${og.calls.length}회`);
+    check("기관 검색은 이름을 안 넘긴다(기관만)",
+      og.calls.every((p) => p.dminsttNm && !p.bidNtceNm), `${og.calls.length}회`);
     // --org 값이 찾는 말로 새면 "경기창조경제혁신센터" 가 공고명 조건이 되어 0건이 됩니다.
     check("--org 값이 찾는 말로 새지 않는다",
       !og.calls.some((p) => p.bidNtceNm === "경기창조경제혁신센터"));
@@ -1015,6 +1024,49 @@ function buildZip(files) {
     const orR = await quiet(() => main(["모두의", "홍보", "--or", "--months", "1"], { fetchAll: mix }));
     check("--or 면 셋 다 나온다", orR.list.length === 3, `${orR.list.length}건`);
 
+    /* 기준일과 오퍼레이션 — 여기가 "왜 안 나오나" 의 핵심이었습니다.
+       inqryDiv 1 은 등록일시, 3 이 개찰일시입니다. 예전 코드는 1 을 쓰면서
+       주석에 "개찰일시" 라고 적어 뒀습니다. 등록은 개찰보다 최대 8~9개월
+       늦으므로 한 기준만 보면 구멍이 납니다.
+       그리고 협상에의한계약은 낙찰목록에 늦게 들어와 개찰결과에만 있는
+       때가 있어, 두 오퍼레이션을 다 봐야 합니다. */
+    const both = spyOn();
+    await quiet(() => main(["아무거나", "--months", "1"], { fetchAll: both.fn }));
+    const divs = new Set(both.calls.map((p) => p.inqryDiv));
+    check("개찰일시(3)와 등록일시(1)를 다 본다", divs.has(3) && divs.has(1), JSON.stringify([...divs]));
+    const ops = new Set(both.ops);
+    check("낙찰목록과 개찰결과를 다 본다",
+      [...ops].some((o) => /ScsbidListSttus/.test(o)) && [...ops].some((o) => /OpengResultListInfo/.test(o)),
+      JSON.stringify([...ops]));
+    // 전수 조회는 페이지를 수십 장 받으므로 기준일을 하나로 줄입니다.
+    const sw2 = spyOn();
+    await quiet(() => main(["아무거나", "--months", "1", "--sweep"], { fetchAll: sw2.fn }));
+    check("전수 조회는 기준일을 개찰일 하나로 줄인다",
+      new Set(sw2.calls.map((p) => p.inqryDiv)).size === 1 && sw2.calls[0].inqryDiv === 3,
+      JSON.stringify([...new Set(sw2.calls.map((p) => p.inqryDiv))]));
+  }
+
+  /* 개찰결과 응답 읽기 — 낙찰목록과 필드가 다릅니다.
+     업체 정보가 "업체명^사업자번호^대표자^투찰금액^투찰율" 한 칸에 붙어 옵니다. */
+  {
+    const openg = async (_s, op) => op.includes("OpengResult") ? ([
+      { bidNtceNo: "C1", bidNtceOrd: "00", bidNtceNm: "모두의 창업 홍보 대행",
+        dminsttNm: "벤처기업협회", opengDt: "2026-08-18 15:00:00",
+        progrsDivCdNm: "개찰완료", prtcptCnum: "3",
+        opengCorpInfo: "가나기획^1234567890^홍길동^180000000^88.5" },
+    ]) : [];
+    const r = await quiet(() => main(["모두의", "홍보", "--months", "1"], { fetchAll: openg }));
+    const it = r.list[0];
+    check("개찰결과에서 업체명을 뽑는다", it?.corp === "가나기획", JSON.stringify(it?.corp));
+    check("사업자번호·투찰금액도 뽑는다", it?.bizno === "1234567890" && it?.amount === 180000000,
+      JSON.stringify({ bizno: it?.bizno, amount: it?.amount }));
+    check("진행구분을 남긴다", it?.progress === "개찰완료", it?.progress);
+    /* 개찰결과의 업체는 확정 낙찰자가 아닙니다. 출처를 구분해 두지 않으면
+       엉뚱한 업체를 경쟁사로 찍게 됩니다. */
+    check("출처를 개찰로 표시한다", it?.src === "개찰", it?.src);
+  }
+
+  {
     /* 활용신청 안 된 서비스 — 공공데이터포털은 서비스마다 신청을 따로 받습니다.
        입찰공고는 되는데 낙찰정보만 안 되는 상황이 실제로 있었고, 영문 오류만
        로그에 흘러 원인을 오래 못 찾았습니다. 즉시 멈추고 안내해야 합니다. */
