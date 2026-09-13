@@ -45,9 +45,12 @@ if "%MONTHS%"=="" set "MONTHS=24"
 %SAY% winner-mode
 set /p "MODE=  mode (enter = fast): "
 
+rem Words are ANDed by default (all of them must appear). "o" widens it to OR.
 set "SWEEP="
 if /i "%MODE%"=="s" set "SWEEP=--sweep"
 if /i "%MODE%"=="sweep" set "SWEEP=--sweep"
+if /i "%MODE%"=="o" set "SWEEP=--or"
+if /i "%MODE%"=="or" set "SWEEP=--or"
 
 %SAY% winner-pull
 call "%SRAJ_HOME%\getcode.bat"

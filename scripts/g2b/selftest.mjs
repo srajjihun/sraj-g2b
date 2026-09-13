@@ -862,6 +862,16 @@ function buildZip(files) {
     matchTitle("2026년 모두의창업 홍보 대행 용역", ["모두의 창업"]));
   check("엉뚱한 공고는 안 잡는다",
     !matchTitle("청사 리모델링 공사", ["모두의 창업"]));
+
+  /* 여러 말은 "둘 다"(AND) 가 기본입니다.
+     예전에는 "둘 중 아무거나"(OR) 라서 "모두의 홍보" 로 찾으면 홍보 과업이
+     전부 나왔습니다 — 좁히려고 말을 더 적었는데 오히려 넓어졌습니다. */
+  check("여러 말은 둘 다 든 것만 (AND 기본)",
+    matchTitle("2026년 모두의 창업 홍보 대행", ["모두의", "홍보"]));
+  check("한쪽만 든 공고는 안 잡는다",
+    !matchTitle("소상공인 정책 홍보 대행 용역", ["모두의", "홍보"]));
+  check("--or 로는 한쪽만 들어도 잡는다",
+    matchTitle("소상공인 정책 홍보 대행 용역", ["모두의", "홍보"], "or"));
   check("최근 N개월 창을 만든다", monthWindows(3, new Date("2026-09-13T00:00:00Z")).length === 3);
   check("월 창이 오래된 순이다", (() => {
     const w = monthWindows(3, new Date("2026-09-13T00:00:00Z"));
@@ -928,10 +938,18 @@ function buildZip(files) {
     check("빠른 조회는 공고명을 서버에 넘긴다",
       fa.calls.every((p) => p.bidNtceNm === "아무거나"),
       JSON.stringify(fa.calls.map((p) => p.bidNtceNm)));
-    // 찾는 말이 둘이면 달마다 두 번 물어봅니다 (나라장터는 한 번에 한 이름만 받습니다).
+    /* AND 가 기본이면 서버에는 한 번만 물어봅니다 — 가장 긴 말로 좁히고
+       나머지는 우리가 걸러냅니다. 호출도 절반으로 줄어듭니다. */
     const two = spyOn();
-    await quiet(() => main(["갑", "을", "--months", "2"], { fetchAll: two.fn }));
-    check("찾는 말마다 따로 물어본다", two.calls.length === 4, `${two.calls.length}회`);
+    await quiet(() => main(["모두의", "홍보", "--months", "2"], { fetchAll: two.fn }));
+    check("AND 면 달마다 한 번만 묻는다", two.calls.length === 2, `${two.calls.length}회`);
+    check("가장 긴 말을 서버에 넘긴다",
+      two.calls.every((p) => p.bidNtceNm === "모두의"),
+      JSON.stringify(two.calls.map((p) => p.bidNtceNm)));
+    // OR 는 말마다 따로 물어봅니다 (나라장터는 한 번에 한 이름만 받습니다).
+    const orSpy = spyOn();
+    await quiet(() => main(["모두의", "홍보", "--or", "--months", "2"], { fetchAll: orSpy.fn }));
+    check("--or 면 말마다 따로 묻는다", orSpy.calls.length === 4, `${orSpy.calls.length}회`);
 
     /* 발주기관으로 찾기 — "이 기관이 발주한 홍보 과업" 을 보려는 경우.
        기관과 공고명을 같이 서버에 넘기면, 서버의 공고명 검색이 띄어쓰기를
@@ -977,6 +995,25 @@ function buildZip(files) {
       JSON.stringify(byOrgOnly.list.map((x) => x.org)));
     check("기관 이름을 짧게 넣어도 걸린다",
       (await quiet(() => main(["--org", "경기창조", "--months", "1"], { fetchAll: rows }))).list.length === 2);
+
+    /* 사용자가 실제로 겪은 증상: "모두의 홍보" 로 찾으면 홍보 과업이 전부 나왔습니다. */
+    const mix = async () => ([
+      { bidNtceNo: "B1", bidNtceOrd: "00", bidNtceNm: "2026년 모두의 창업 홍보 대행 용역",
+        dminsttNm: "벤처기업협회", bidwinnrNm: "가나기획", sucsfbidAmt: "100000000",
+        opengDt: "2026-03-01 11:00:00" },
+      { bidNtceNo: "B2", bidNtceOrd: "00", bidNtceNm: "소상공인 정책 홍보 대행 용역",
+        dminsttNm: "소진공", bidwinnrNm: "다라산업", sucsfbidAmt: "200000000",
+        opengDt: "2026-04-01 11:00:00" },
+      { bidNtceNo: "B3", bidNtceOrd: "00", bidNtceNm: "모두의 창업 운영기관 위탁",
+        dminsttNm: "벤처기업협회", bidwinnrNm: "마바컴", sucsfbidAmt: "300000000",
+        opengDt: "2026-05-01 11:00:00" },
+    ]);
+    const andR = await quiet(() => main(["모두의", "홍보", "--months", "1"], { fetchAll: mix }));
+    check("\"모두의 홍보\" 는 모두의 창업 홍보만 찾는다",
+      andR.list.length === 1 && andR.list[0].bidNo.startsWith("B1"),
+      JSON.stringify(andR.list.map((x) => x.title)));
+    const orR = await quiet(() => main(["모두의", "홍보", "--or", "--months", "1"], { fetchAll: mix }));
+    check("--or 면 셋 다 나온다", orR.list.length === 3, `${orR.list.length}건`);
 
     /* 활용신청 안 된 서비스 — 공공데이터포털은 서비스마다 신청을 따로 받습니다.
        입찰공고는 되는데 낙찰정보만 안 되는 상황이 실제로 있었고, 영문 오류만

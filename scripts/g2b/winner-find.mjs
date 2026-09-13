@@ -19,7 +19,9 @@
 // 사용법 (PC, 한국 IP 필요):
 //   set G2B_SERVICE_KEY=공공데이터포털_일반인증키
 //   node scripts\g2b\winner-find.mjs 모두의창업
-//   node scripts\g2b\winner-find.mjs "모두의 창업" 창업홍보 --months 36
+//   node scripts\g2b\winner-find.mjs 모두의 홍보          ← 둘 다 든 공고
+//   node scripts\g2b\winner-find.mjs 모두의 홍보 --or     ← 둘 중 아무거나
+//   node scripts\g2b\winner-find.mjs "모두의 창업" --months 36
 //   node scripts\g2b\winner-find.mjs --org 경기창조경제혁신센터 홍보
 //   node scripts\g2b\winner-find.mjs --org 경기창조경제혁신센터        ← 그 기관 전부
 //   node scripts\g2b\winner-find.mjs 모두의창업 --sweep
@@ -69,10 +71,20 @@ function isQuotaError(err) {
  * 한 달치를 조회합니다.
  * @param name 나라장터에 넘길 공고명. null 이면 전수(기간 전체)로 받습니다.
  */
-/** 공고명이 찾는 말 중 하나라도 품고 있는지. 띄어쓰기 차이는 무시합니다. */
-export function matchTitle(title, words) {
+/**
+ * 공고명이 찾는 말을 품고 있는지. 띄어쓰기 차이는 무시합니다.
+ *
+ * 기본은 **둘 다**(AND) 입니다. "모두의 홍보" 라고 적으면 두 말이 다 든 공고만
+ * 찾습니다. 예전에는 "둘 중 아무거나"(OR) 였는데, 그러면 "모두의 홍보" 로
+ * 찾을 때 홍보 과업이 전부 나옵니다 — 좁히려고 말을 더 적었는데 오히려
+ * 넓어지는 셈이라 쓸 수가 없었습니다.
+ * 둘 중 아무거나로 찾고 싶으면 --or 를 씁니다.
+ */
+export function matchTitle(title, words, mode = "and") {
   const t = norm(title);
-  return words.some((x) => t.includes(norm(x)));
+  return mode === "or"
+    ? words.some((x) => t.includes(norm(x)))
+    : words.every((x) => t.includes(norm(x)));
 }
 
 /**
@@ -109,6 +121,7 @@ export async function main(argvIn = process.argv.slice(2), deps = {}) {
   callsUsed = 0;
   const sweep = argv.includes("--sweep");
   const allKinds = argv.includes("--all");
+  const mode = argv.includes("--or") ? "or" : "and";
   const mi = argv.indexOf("--months");
   const months = mi !== -1 && Number(argv[mi + 1]) > 0 ? Number(argv[mi + 1]) : DEFAULT_MONTHS;
   const oi = argv.indexOf("--org");
@@ -142,7 +155,11 @@ export async function main(argvIn = process.argv.slice(2), deps = {}) {
 
   console.log(`낙찰업체 찾기`);
   if (org) console.log(`  발주기관  ${org}`);
-  console.log(`  찾는 말   ${words.length ? words.join(" · ") : "(제한 없음 — 이 기관의 낙찰 건 전부)"}`);
+  console.log(`  찾는 말   ${words.length
+    ? (words.length > 1
+        ? `${words.join(mode === "or" ? " 또는 " : " + ")} (${mode === "or" ? "둘 중 아무거나" : "둘 다 든 공고"})`
+        : words[0])
+    : "(제한 없음 — 이 기관의 낙찰 건 전부)"}`);
   console.log(`  기간      최근 ${months}개월 (${wins[0].ym} ~ ${wins[wins.length - 1].ym}) · 개찰일 기준`);
   console.log(`  업무구분  ${kinds.join(" · ")}`);
   console.log(`  방식      ${sweep ? "전수 조회 — 기간 전체를 받아 직접 걸러냅니다" : "빠른 조회 — 나라장터에 공고명을 넘깁니다"}`);
@@ -168,7 +185,15 @@ export async function main(argvIn = process.argv.slice(2), deps = {}) {
            전수     — 아무 조건 없이 기간 전체
            기관 있음 — 기관으로 한 번만. 공고명은 우리가 걸러냅니다
            기관 없음 — 찾는 말마다 따로 (나라장터는 한 번에 한 이름만 받습니다) */
-      const asks = sweep ? [{}] : org ? [{ org }] : words.map((name) => ({ name }));
+      /* 빠른 조회에서 서버에 넘길 말.
+           AND — 한 번만 물어봅니다. 가장 긴 말이 대체로 더 좁으니 그것을 넘기고,
+                 나머지 말은 받아온 것에서 우리가 걸러냅니다. 호출도 적게 씁니다.
+           OR  — 말마다 따로 물어봅니다(나라장터는 한 번에 한 이름만 받습니다). */
+      const longest = [...words].sort((a, b) => b.length - a.length)[0];
+      const asks = sweep ? [{}]
+        : org ? [{ org }]
+        : mode === "or" ? words.map((name) => ({ name }))
+        : [{ name: longest }];
       for (const ask of asks) {
         const name = ask.name ?? null;
         let items;
@@ -197,7 +222,7 @@ export async function main(argvIn = process.argv.slice(2), deps = {}) {
           // 기관을 지정했으면 수요기관·공고기관 어느 쪽이든 걸리면 인정합니다.
           if (org && !(norm(it.org).includes(norm(org)) || norm(it.noticeOrg).includes(norm(org)))) continue;
           // 찾는 말이 없으면(기관만 지정) 공고명은 안 봅니다.
-          if (words.length && !matchTitle(it.title, words)) continue;
+          if (words.length && !matchTitle(it.title, words, mode)) continue;
           if (!hits.has(it.bidNo)) hits.set(it.bidNo, { ...it, kind });
         }
       }
@@ -246,6 +271,10 @@ export async function main(argvIn = process.argv.slice(2), deps = {}) {
     if (org) {
       console.log(`  기관 이름이 나라장터 표기와 다를 수 있습니다.`);
       console.log(`  짧게 넣어 보세요 — "경기창조경제혁신센터" 대신 "경기창조" 처럼.\n`);
+    }
+    if (words.length > 1 && mode === "and") {
+      console.log(`  지금은 적은 말이 **모두** 든 공고만 찾습니다.`);
+      console.log(`  둘 중 아무거나로 넓히려면 --or 를 붙이세요.\n`);
     }
     if (!sweep) {
       console.log(`  다음을 해보세요.`);
